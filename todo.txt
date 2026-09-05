@@ -1,1 +1,54 @@
-﻿
+﻿# zkstark — план работ
+
+## Дизайн-документ (готов, в чате): Rust-реализация статистики в Risc Zero
+
+## 1. Инициализация проекта Risc Zero — [ЭТАП B: ГОТОВО через WSL2/Ubuntu]
+- [x] cargo-risczero 2.3.2 + r0vm 2.3.2 (rzup 0.5.0) установлены в WSL2/Ubuntu (rzup install)
+- [x] ГОСТЕВОЙ ТУЛЧЕЙН: rzup install rust -> RISC Zero rust 1.97.0, toolchain `risc0` (x86_64-unknown-linux-gnu; на Windows недоступен — решено WSL2)
+- [x] guest target `riscv32im-risc0-zkvm-elf` — ELF lab.bin/aggregator.bin успешно собраны (risc0_build::embed_methods)
+- [x] Создан workspace `~/zkstark` (WSL2, user test): core / methods / host
+- [x] Полные (не dev) STARK-proof: 3 proofs сгенерированы и верифицированы (t_proof ~= 36s/шт)
+
+## 2. Статистическое ядро (core) — [ЭТАП A: ГОТОВО]
+- [x] Уэлча t-тест: t, df (Satterthwaite), p-value (t-CDF/неполная бета) — спецфункции в special.rs
+- [x] t-CDF / неполная бета (ibeta/betacf NR) / ln_gamma (Lanczos) — совпадают с R до 1e-9
+- [x] Описательная статистика: среднее, СКО (n-1); сводные (n, sum, sum_sq) в summary.rs
+- [x] Общие типы (SummaryStats, DescriptiveStats, WelchResult) + RawSample в core/lib.rs (serde для journal)
+- [x] Валидация против R: 6 кейсов — t/df/p/mean/sd совпадают с t.test() до 1e-9
+- [x] Тесты: unit + integration crossval.rs (12 тестов) — все проходят (в WSL: cargo test -p zkstark-core)
+- [ ] (вне MVP) Shapiro-Wilk, медианный тест, нормальный CDF
+
+## 3. Гостевые программы (methods/guest) — [MVП ГОТОВО]
+- [x] lab.rs — лаборатория: RawSample -> SummaryStats (n, sum, sum_sq) в journal (+ ZK proof)
+- [x] aggregator.rs — агрегатор: 2x SummaryStats -> WelchResult (t, df, p, mean/sd) в journal
+- [ ] (вне MVP) shapiro.rs / медианный тест (m0, count_above) + встроенная верификация proof'ов в aggregator
+
+## 4. Хост (host/main.rs) — [MVП ГОТОВО]
+- [x] Подача данных в guest (ExecutorEnv::write), генерация proof (dev-mode RISC0_DEV_MODE=1 и полный режим)
+- [x] Верификация receipt (LAB_ID / AGGREGATOR_ID), извлечение journal (decode)
+- [x] Вывод: summaries + t/df/p (совпадают с R golden до 1e-9)
+
+## 5. Валидация против R
+- [x] t.test(var.equal=FALSE) <-> Welch (t, df, p): 1e-9 (golden-тесты core + journal в host)
+- [ ] (вне MVP) shapiro.test() <-> SW; fisher/mood.medtest <-> медианный тест
+
+## 6. Тесты / формальная верификация
+- [x] Unit-тесты статфункций с golden-значениями из R + интеграционные crossval (12) — проходят
+- [x] Интеграционный smoke: host -> guest (dev и полный prover) -> journal сравнён с R golden
+- [ ] (вне MVP) proptest (случайные выборки, |delta-p| < tol); граничные случаи n=1/5000 в zkVM
+
+## 7. Доказательство применимости взвешенного Q2 (параграф для статьи)
+- [x] Симуляции (sim_median_test.R, M=150, set.seed=2026): bias_w, мощность, согласованность вердиктов с mood.medtest
+- [x] Выводы: взвешенное Q2 несмещено/состоятельно; согласованность 0.81-1.00; Фишер ~= chi2
+- [ ] Оформить текст обоснования + таблицы в статью
+
+## 8. Открытые вопросы
+- no_std в guest: сейчас используется std-фича risc0-zkvm; строгий no_std — опционально
+- Встроенная в aggregator верификация proof'ов (передача receipt'ов в guest) — следующий шаг
+- Распределение вычислений m0/count_above между guest'ами (для медианного теста)
+- Производительность при n=5000 в zkVM (при необходимости dev-mode)
+
+## 9. Окружение (WSL2)
+- Ubuntu 20.04 (ядро 5.10.16, WSL2); user test; sudo без пароля
+- rust stable (rustup), RISC Zero: rzup 0.5.0, cargo-risczero 2.3.2, r0vm 2.3.2, rust 1.97.0 (toolchain risc0)
+- Проект: ~/zkstark (рабочая копия; D:\lair\zkstark — исходная, требует синхронизации)

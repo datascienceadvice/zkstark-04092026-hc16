@@ -1,4 +1,10 @@
-.Rproj.user
+# R
+.Rproj.user/
 .Rhistory
 .RData
 .Ruserdata
+
+# Rust
+/target
+**/target
+Cargo.lock

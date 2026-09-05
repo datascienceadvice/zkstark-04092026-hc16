@@ -1,0 +1,116 @@
+# design.txt — MVP: t-тест + описательная статистика (без непараметрики)
+
+## 1. Цель MVP
+Rust-приложение на базе Risc Zero zkVM: агрегатор собирает статистики от
+двух лабораторий (концентрации аналита в крови), верифицирует их ZK-proof'ы
+и вычисляет описательную статистику + Уэлча t-тест, не раскрывая сырые данные
+пациентов. Каждая лаборатория публикует только сводные статистики (N, суммы,
+квадраты) и доказывает их корректность.
+
+## 2. Область MVP (без непараметрики)
+- Уэлча t-тест (сравнение двух независимых выборок)
+- Описательная статистика: выборочное среднее, выборочное СКО (СКО)
+- НЕ входит: Shapiro-Wilk, медианный/непараметрический тесты (позже)
+
+## 3. Архитектура Risc Zero
+```
+zkstark/
+├── Cargo.toml            (workspace)
+├── host/
+│   ├── Cargo.toml
+│   └── src/main.rs       # генерация proof, верификация receipt, печать journal
+├── methods/
+│   ├── Cargo.toml
+│   ├── build.rs
+│   ├── guest/
+│   │   └── src/bin/
+│   │       ├── lab.rs        # лаборатория: из сырых данных -> сводные (ZK proof)
+│   │       └── aggregator.rs # агрегатор: описат. статистика + Уэлча t-тест
+│   └── src/lib.rs            # method IDs (IMAGE_ID)
+└── core/
+    └── src/lib.rs            # общие типы (Sample, SummaryStats, Result)
+```
+
+## 4. Поток данных (MVP)
+```
+Lab1 (guest: lab)                  Lab2 (guest: lab)
+  сырые x1..xn1 ->                  сырые y1..yn2 ->
+  SummaryStats:                     SummaryStats:
+  n1, sum1, sum_sq1                 n2, sum2, sum_sq2
+  (ZK proof: вычисление корректно)  (ZK proof: вычисление корректно)
+        └──────────────────┬───────────────────┘
+                           │
+                Aggregator (guest: aggregator)
+                           │  верифицирует оба proof'а
+                           │  описательная статистика (mean, sd) по каждой группе
+                           │  Уэлча t-тест: t, df, p-value
+                           ▼
+        journal: {mean1, sd1, mean2, sd2, t, df, p}
+```
+
+Каждая лаборатория передаёт агрегатору ТОЛЬКО набор сводных статистик
+(N, sum, sum_sq), достаточный для среднего и СКО и для Уэлча t-теста.
+Агрегатор доказывает корректность всего вычисления в одном proof.
+
+## 5. Структуры данных (core)
+```rust
+#[derive(Serialize, Deserialize, Clone)]
+pub struct RawSample {
+    pub values: Vec<f64>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct SummaryStats {
+    pub n: usize,
+    pub sum: f64,
+    pub sum_sq: f64,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+pub struct DescriptiveStats {
+    pub n: usize,
+    pub mean: f64,
+    pub sd: f64,   // выборочное СКО (n-1)
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct WelchResult {
+    pub t: f64,
+    pub df: f64,
+    pub p_value: f64,
+    pub mean1: f64, pub sd1: f64,
+    pub mean2: f64, pub sd2: f64,
+}
+```
+Несколько групп -> SummaryStats на каждую.
+
+## 6. Формулы (MVP)
+- mean = sum / n
+- var (несмещ.) = (sum_sq - sum^2/n) / (n - 1);  sd = sqrt(var), n >= 2
+- Уэлч t-тест:
+  - t = (mean1 - mean2) / sqrt(var1/n1 + var2/n2)
+  - df = (var1/n1 + var2/n2)^2 /
+         ( (var1/n1)^2/(n1-1) + (var2/n2)^2/(n2-1) )
+  - p = 2 * (1 - T_cdf(|t|, df))   (двусторонний)
+- T_cdf: регуляризованная неполная бета-функция (I_x(a,b)),
+  T(x;df) = 1 - 0.5 * I_{df/(df+x^2)}(df/2, 1/2)
+
+## 7. no_std в guest (Risc Zero)
+Guest работает в #![no_std]. Требуются собственные реализации:
+- sqrt (или доступен через core::f64::sqrt? — проверить)
+- ln / exp (для t-CDF/бета)
+- регуляризованная неполная бета I_x(a,b) (численно устойчиво, напр. Betinc/преобразование в обычную бета)
+- (нормальный CDF не нужен для MVP)
+
+## 8. Валидация против R
+- Rscript D:\R\R-4.3.1\bin\Rscript.exe
+- t.test(x, y, var.equal=FALSE) <-> Welch (t, df, p)
+- mean(x), sd(x) <-> описательная статистика
+- Допуск: |delta-p| < 1e-6 (численные различия реализации t-CDF/бета)
+
+## 9. Тесты MVP
+- Unit: mean/sd, t/df/p на golden-значениях из R
+- Интеграция: host подаёт данные в guest и в R, сравнивает journal
+- Граничные случаи: n=2 (min для sd), n1=n2=1 (df -> NaN/0 — обработать),
+  равные средние (p=1), константная выборка
+```
