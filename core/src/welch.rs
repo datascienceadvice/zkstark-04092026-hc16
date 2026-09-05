@@ -1,6 +1,6 @@
 //! Уэлча t-тест (независимые выборки, без предположения о равенстве дисперсий).
 
-use crate::special::t_cdf;
+use crate::special::{t_two_tailed_p};
 use crate::summary::{describe, DescriptiveStats, SummaryStats};
 
 /// Результат Уэлча t-теста.
@@ -78,7 +78,8 @@ pub fn welch_descriptive(a: &DescriptiveStats, b: &DescriptiveStats) -> WelchRes
     let p_value = if t.is_nan() || df.is_nan() || df <= 0.0 {
         f64::NAN
     } else {
-        2.0 * (1.0 - t_cdf(t.abs(), df))
+        // напрямую через неполную бета — без потери точности в хвостах
+        t_two_tailed_p(t, df)
     };
 
     WelchResult {

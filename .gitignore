@@ -8,3 +8,11 @@
 /target
 **/target
 Cargo.lock
+
+# SQLite — транзиентные файлы journaling (сама БД zkstark.db коммитится)
+results/*.db-wal
+results/*.db-shm
+
+# Логи экспериментов и прогонов (артефакты уже в results/*.csv)
+scripts/*.txt
+analysis/*.txt

@@ -1,11 +1,16 @@
 use risc0_zkvm::guest::env;
-use zkstark_core::{welch_from_summary, SummaryStats};
+use zkstark_core::{stage1, stage2, AggInput, AggOutput};
 
+/// Агрегатор: два раунда протокола.
 fn main() {
-    // Агрегатор получает по одной сводной статистике от каждой лаборатории
-    // и вычисляет Уэлча t-тест (t, df, p) + описательную статистику групп.
-    // В MVP верификация proof'ов выполняется на стороне host.
-    let (a, b): (SummaryStats, SummaryStats) = env::read();
-    let result = welch_from_summary(&a, &b);
-    env::commit(&result);
+    let input: AggInput = env::read();
+    let output = match input {
+        AggInput::Stage1 { lab1, lab2, alpha } => AggOutput::Stage1(stage1(&lab1, &lab2, alpha)),
+        AggInput::Stage2 {
+            lab1,
+            lab2,
+            decision,
+        } => AggOutput::Stage2(stage2(&lab1, &lab2, &decision)),
+    };
+    env::commit(&output);
 }

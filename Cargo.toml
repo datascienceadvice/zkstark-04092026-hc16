@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["core", "methods", "host"]
+members = ["core", "methods", "host", "bench"]
 
 [profile.dev]
 opt-level = 3
