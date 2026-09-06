@@ -14,6 +14,7 @@ mod types;
 use data::{load_golden, load_scenarios};
 use db::{CaseRunRow, Db};
 use export::export_run;
+use methods::{AGGREGATOR_ID, LAB_ID};
 use runner::run_all;
 use std::env;
 use std::process::Command;
@@ -25,7 +26,7 @@ fn usage() -> ! {
         \x20 --cases all|a,b   (подмножество сценариев; default all)\n\
         \x20 --tol 1e-9        (допуск rel-ошибки для golden-проверок)\n\
         \x20 --db  PATH        (SQLite; default results/zkstark.db)\n\
-        \x20 --export          (писать report.csv + errors.csv рядом с БД)"
+        \x20 --export          (писать report_<run>.csv + errors_<run>.csv рядом с БД)"
     );
     std::process::exit(2);
 }
@@ -38,7 +39,30 @@ fn git_commit() -> String {
         .unwrap_or_else(|_| "unknown".into())
 }
 
+/// Проверка соответствия `LAB_ID`/`AGGREGATOR_ID` (из фактической гостевой
+/// сборки, methods) константам `LAB_ID_DIGEST` ядра. При рассинхроне — паникнуть
+/// с диагностикой: композиция (`env::verify`) в противном случае упадёт.
+fn ensure_ids_in_sync() {
+    use zkstark_core::LAB_ID_DIGEST;
+    if LAB_ID != LAB_ID_DIGEST {
+        panic!(
+            "рассинхрон method-id: methods::LAB_ID={LAB_ID:?}, \
+             core::LAB_ID_DIGEST={LAB_ID_DIGEST:?}. \
+             Пересоберите гостей и обновите LAB_ID_DIGEST в core/src/lib.rs."
+        );
+    }
+    // AGGREGATOR_ID не имеет парной константы — только диагностическая печать.
+    eprintln!(
+        "bench: lab_id={:08x?}, agg_id={:08x?}",
+        LAB_ID, AGGREGATOR_ID
+    );
+}
+
 fn main() {
+    // Синхронизация method-id: ЛАБораторные guest'ы пересобираются при каждом
+    // изменении гостевого кода (а image_id может дрейфовать из-за метаданных
+    // ELF), поэтому сверяем принятые константы с реальными id собранных гостей.
+    ensure_ids_in_sync();
     let args: Vec<String> = env::args().skip(1).collect();
     let mut mode = "dev".to_string();
     let mut cases: Option<Vec<String>> = None;

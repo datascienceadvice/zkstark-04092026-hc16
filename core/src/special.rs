@@ -11,6 +11,14 @@
 ///   lnGamma(x) = ln(sqrt(2π)) + (z+0.5)·ln(t) - t + ln(ser)
 /// с ser = c0 + Σ_{i=1..9} c_i/(z+i), c0 = 0.99999999999980993.
 pub fn ln_gamma(x: f64) -> f64 {
+    if x.is_nan() {
+        return f64::NAN;
+    }
+    if x <= 0.0 {
+        // Для неположительных целых функция расходится/не определена.
+        return f64::INFINITY;
+    }
+
     const C: [f64; 9] = [
         0.99999999999980993,
         676.5203681218851,
@@ -56,6 +64,12 @@ pub fn beta(a: f64, b: f64) -> f64 {
 /// Метод Numerical Recipes (betai): префактор bt из гамма-функций,
 /// продолжающаяся дробь betacf, с «переворотом» x -> 1-x для устойчивости.
 pub fn ibeta(x: f64, a: f64, b: f64) -> f64 {
+    if x.is_nan() || a.is_nan() || b.is_nan() {
+        return f64::NAN;
+    }
+    if a <= 0.0 || b <= 0.0 {
+        return f64::NAN;
+    }
     if x <= 0.0 {
         return 0.0;
     }
@@ -79,6 +93,12 @@ fn betacf(a: f64, b: f64, x: f64) -> f64 {
     const MAX_IT: usize = 100000;
     const EPS: f64 = 1e-15;
     const FP_MIN: f64 = 1e-300;
+
+    // Защитная ветка вне рабочей области: ibeta выставил бы NAN раньше,
+    // здесь возвращаем h=1 как нейтральный префактор.
+    if a <= 0.0 || b <= 0.0 {
+        return 1.0;
+    }
 
     let qab = a + b;
     let qap = a + 1.0;

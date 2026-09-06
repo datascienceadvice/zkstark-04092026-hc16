@@ -1,2 +1,0 @@
-case,status,method,sw1_w,sw1_p,sw2_w,sw2_p,welch_t,welch_df,welch_p,m_hat,mood_a,mood_b,mood_p,total_cycles,user_cycles,segments,wall_ms,asserts,max_rel_err,pass,error
-n16,ok,welch,9.928769181173612e-1,8.386190439986847e-1,9.096217653479722e-1,4.168189969068182e-1,-1.152847402337255e0,2.560521769532663e0,3.451723903109801e-1,,,,,425984,166881,6,227255,10,5.560256157780501e-15,1,

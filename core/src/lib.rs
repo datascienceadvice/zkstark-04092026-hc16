@@ -148,9 +148,12 @@ fn finish_mood(lab1: &LabResultRound2, lab2: &LabResultRound2, decision: &Stage1
 
 /// Полный протокол «лаборатория → агрегатор → лабортория → агрегатор» по
 /// сырым выборкам без зk-части: удобно для проверок и симуляций.
-pub fn analyze(x: &[f64], y: &[f64], alpha: f64) -> PipelineResult {
-    let sw1 = shapiro_wilk(x).expect("invalid first sample");
-    let sw2 = shapiro_wilk(y).expect("invalid second sample");
+///
+/// Возвращает `Err`, если хотя бы одна выборка недопустима для Шапиро–Уилка
+/// (например, константная группа — там критерий Муда всё равно теряет смысл).
+pub fn analyze(x: &[f64], y: &[f64], alpha: f64) -> Result<PipelineResult, String> {
+    let sw1 = shapiro_wilk(x).map_err(|e| format!("invalid first sample: {e}"))?;
+    let sw2 = shapiro_wilk(y).map_err(|e| format!("invalid second sample: {e}"))?;
     let lab1 = LabResult {
         stats: summarize(x),
         sw: sw1,
@@ -170,7 +173,7 @@ pub fn analyze(x: &[f64], y: &[f64], alpha: f64) -> PipelineResult {
         round1: lab2,
         count_above: decision.m_hat.map(|m| count_above(y, m)),
     };
-    stage2(&lab1r2, &lab2r2, &decision)
+    Ok(stage2(&lab1r2, &lab2r2, &decision))
 }
 
 // ---------------------------------------------------------------------------
@@ -240,5 +243,5 @@ pub enum AggOutput {
 /// (LAB_ID) и держится синхронно с гостевой сборкой: после любых правок гостя
 /// LAB_ID меняется, и его нужно обновить здесь вручную.
 pub const LAB_ID_DIGEST: [u32; 8] = [
-    4064521678, 1670010974, 684420141, 4107763452, 4112219358, 2291538293, 27802716, 762688196,
+    2272067089, 1075530289, 2173383169, 15982908, 1213211435, 2534219988, 4193422313, 1569944809,
 ];
