@@ -198,6 +198,10 @@ pub enum LabOutput {
 }
 
 /// Вход агрегатора: первый (S1) или заключительный (S2) раунд.
+///
+/// Поля `lab1_journal`/`lab2_journal` несут байты журналов соответствующих
+/// лабораторных доказательств — агрегатор проверяет их в гостевой среде через
+/// `env::verify(LAB_ID, journal)` (композиция доказательств Risc Zero).
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub enum AggInput {
     /// Первый раунд: результаты двух лабораторий + alpha
@@ -205,12 +209,20 @@ pub enum AggInput {
         lab1: LabResult,
         lab2: LabResult,
         alpha: f64,
+        #[serde(default)]
+        lab1_journal: Vec<u8>,
+        #[serde(default)]
+        lab2_journal: Vec<u8>,
     },
     /// Заключительный раунд: результаты второго раунда лабораторий + решение
     Stage2 {
         lab1: LabResultRound2,
         lab2: LabResultRound2,
         decision: Stage1Decision,
+        #[serde(default)]
+        lab1_journal: Vec<u8>,
+        #[serde(default)]
+        lab2_journal: Vec<u8>,
     },
 }
 
@@ -220,3 +232,13 @@ pub enum AggOutput {
     Stage1(Stage1Decision),
     Stage2(PipelineResult),
 }
+
+/// Method ID гостевой программы лаборатории — для `env::verify(LAB_ID, journal)`
+/// внутри агрегатора (композиция доказательств Risc Zero).
+///
+/// Значение снимается из `target/release/build/methods-*/out/methods.rs`
+/// (LAB_ID) и держится синхронно с гостевой сборкой: после любых правок гостя
+/// LAB_ID меняется, и его нужно обновить здесь вручную.
+pub const LAB_ID_DIGEST: [u32; 8] = [
+    4064521678, 1670010974, 684420141, 4107763452, 4112219358, 2291538293, 27802716, 762688196,
+];

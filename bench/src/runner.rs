@@ -5,7 +5,7 @@
 use crate::data::golden as golden_of;
 use crate::types::{CaseRun, Check, GoldenValues, MethodOutcome, Scenario};
 use methods::{AGGREGATOR_ELF, AGGREGATOR_ID, LAB_ELF, LAB_ID};
-use risc0_zkvm::{default_prover, ExecutorEnv};
+use risc0_zkvm::{default_prover, ExecutorEnv, Receipt};
 use serde::Serialize;
 use std::time::Instant;
 use zkstark_core::{AggInput, AggOutput, LabInput, LabOutput, RawSample, Stage1Decision};
@@ -17,20 +17,28 @@ struct ProofStat {
     segments: usize,
 }
 
-/// Доказывает elf с input, верифицирует receipt по method_id и декодирует journal.
-fn prove_decode<T>(
+/// Доказывает elf с input (+ предположения-лаборатории), верифицирует receipt
+/// по method_id и декодирует journal. Композиция Risc Zero: агрегатору
+/// передаются receipt'ы лабораторных программ через `assumptions` — они
+/// подмешиваются в env для разрешения `env::verify` внутри гостя.
+#[allow(clippy::type_complexity)]
+fn prove_with<T>(
     elf: &[u8],
     method_id: [u32; 8],
     input: &impl Serialize,
-) -> Result<(T, ProofStat), String>
+    assumptions: &[Receipt],
+) -> Result<(T, ProofStat, Receipt), String>
 where
     T: serde::de::DeserializeOwned,
 {
-    let env = ExecutorEnv::builder()
+    let mut builder = ExecutorEnv::builder();
+    builder
         .write(input)
-        .map_err(|e| format!("write input: {e}"))?
-        .build()
-        .map_err(|e| format!("build env: {e}"))?;
+        .map_err(|e| format!("write input: {e}"))?;
+    for r in assumptions {
+        builder.add_assumption(r.clone());
+    }
+    let env = builder.build().map_err(|e| format!("build env: {e}"))?;
     let prover = default_prover();
     let t0 = Instant::now();
     let info = prover.prove(env, elf).map_err(|e| format!("prove: {e}"))?;
@@ -49,7 +57,7 @@ where
         .journal
         .decode()
         .map_err(|e| format!("decode journal: {e}"))?;
-    Ok((out, stat))
+    Ok((out, stat, info.receipt))
 }
 
 /// Относительная ошибка ~ |got-exp|/|exp| (для exp==0 — абсолютная).
@@ -137,91 +145,109 @@ pub fn run_case(case: &Scenario, golden: &GoldenValues, tol: f64) -> CaseRun {
     let gg = |metric: &str| golden_of(golden, &case.id, metric);
     let gid = case.id.clone();
 
-    // lab round 1 (обе группы)
-    let LabOutput::Round1(lab1) = (match prove_decode(
-        LAB_ELF, LAB_ID, &LabInput::Round1(RawSample { values: g1.clone() }),
+    // lab round 1 (обе группы): receipt'ы лабораторий передаются агрегатору как
+    // предположения (композиция) + их журналы попадают во вход агрегатора.
+    let (lab_output1, lab_receipt1) = match prove_with(
+        LAB_ELF, LAB_ID, &LabInput::Round1(RawSample { values: g1.clone() }), &[],
     ) {
-        Ok((o, s)) => {
+        Ok((o, s, r)) => {
             add_stat(&mut wall, &mut cyc, &mut usr, &mut seg, &s);
-            o
+            (o, r)
         }
         Err(e) => return err_run(&gid, format!("lab R1(1): {e}")),
-    }) else {
+    };
+    let LabOutput::Round1(lab1) = lab_output1 else {
         return err_run(&gid, "lab R1(1): не Round1".into());
     };
 
-    let LabOutput::Round1(lab2) = (match prove_decode(
-        LAB_ELF, LAB_ID, &LabInput::Round1(RawSample { values: g2.clone() }),
+    let (lab_output2, lab_receipt2) = match prove_with(
+        LAB_ELF, LAB_ID, &LabInput::Round1(RawSample { values: g2.clone() }), &[],
     ) {
-        Ok((o, s)) => {
+        Ok((o, s, r)) => {
             add_stat(&mut wall, &mut cyc, &mut usr, &mut seg, &s);
-            o
+            (o, r)
         }
         Err(e) => return err_run(&gid, format!("lab R1(2): {e}")),
-    }) else {
+    };
+    let LabOutput::Round1(lab2) = lab_output2 else {
         return err_run(&gid, "lab R1(2): не Round1".into());
     };
 
-    // aggregator stage 1
-    let AggOutput::Stage1(decision) = (match prove_decode(
+    // aggregator stage 1 — композиция: агрегатор проверяет журналы лабораторий
+    let agg1 = match prove_with(
         AGGREGATOR_ELF,
         AGGREGATOR_ID,
-        &AggInput::Stage1 { lab1: lab1.clone(), lab2: lab2.clone(), alpha },
+        &AggInput::Stage1 {
+            lab1: lab1.clone(),
+            lab2: lab2.clone(),
+            alpha,
+            lab1_journal: lab_receipt1.journal.bytes.clone(),
+            lab2_journal: lab_receipt2.journal.bytes.clone(),
+        },
+        &[lab_receipt1.clone(), lab_receipt2.clone()],
     ) {
-        Ok((o, s)) => {
+        Ok((o, s, _r)) => {
             add_stat(&mut wall, &mut cyc, &mut usr, &mut seg, &s);
             o
         }
         Err(e) => return err_run(&gid, format!("agg S1: {e}")),
-    }) else {
+    };
+    let AggOutput::Stage1(decision) = agg1 else {
         return err_run(&gid, "agg S1: не Stage1".into());
     };
 
     // lab round 2 (обе группы)
     let r2 = |g: &Vec<f64>, d: &Stage1Decision| {
-        prove_decode(
+        prove_with(
             LAB_ELF,
             LAB_ID,
             &LabInput::Round2 { sample: RawSample { values: g.clone() }, decision: *d },
+            &[],
         )
     };
 
-    let LabOutput::Round2(lab1r2) = (match r2(g1, &decision) {
-        Ok((o, s)) => {
+    let (lab_output1r2, lab_receipt1r2) = match r2(g1, &decision) {
+        Ok((o, s, r)) => {
             add_stat(&mut wall, &mut cyc, &mut usr, &mut seg, &s);
-            o
+            (o, r)
         }
         Err(e) => return err_run(&gid, format!("lab R2(1): {e}")),
-    }) else {
+    };
+    let LabOutput::Round2(lab1r2) = lab_output1r2 else {
         return err_run(&gid, "lab R2(1): не Round2".into());
     };
 
-    let LabOutput::Round2(lab2r2) = (match r2(g2, &decision) {
-        Ok((o, s)) => {
+    let (lab_output2r2, lab_receipt2r2) = match r2(g2, &decision) {
+        Ok((o, s, r)) => {
             add_stat(&mut wall, &mut cyc, &mut usr, &mut seg, &s);
-            o
+            (o, r)
         }
         Err(e) => return err_run(&gid, format!("lab R2(2): {e}")),
-    }) else {
+    };
+    let LabOutput::Round2(lab2r2) = lab_output2r2 else {
         return err_run(&gid, "lab R2(2): не Round2".into());
     };
 
-    // aggregator stage 2 — итог
-    let AggOutput::Stage2(result) = (match prove_decode(
+    // aggregator stage 2 — итог (тоже композиция)
+    let agg2 = match prove_with(
         AGGREGATOR_ELF,
         AGGREGATOR_ID,
         &AggInput::Stage2 {
             lab1: lab1r2.clone(),
             lab2: lab2r2.clone(),
             decision,
+            lab1_journal: lab_receipt1r2.journal.bytes.clone(),
+            lab2_journal: lab_receipt2r2.journal.bytes.clone(),
         },
+        &[lab_receipt1r2.clone(), lab_receipt2r2.clone()],
     ) {
-        Ok((o, s)) => {
+        Ok((o, s, _r)) => {
             add_stat(&mut wall, &mut cyc, &mut usr, &mut seg, &s);
             o
         }
         Err(e) => return err_run(&gid, format!("agg S2: {e}")),
-    }) else {
+    };
+    let AggOutput::Stage2(result) = agg2 else {
         return err_run(&gid, "agg S2: не Stage2".into());
     };
 

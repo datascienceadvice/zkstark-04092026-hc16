@@ -57,6 +57,34 @@ target/release/bench --export-run <run_id>    # результаты в results/
 - Криптографическая корректность: никогда не доверять journal без
   `receipt.verify(method_id)`.
 
+## Композиция доказательств (Фаза A, обязательно)
+
+- Встроенная верификация: агрегатор оба раунда вызывает
+  `env::verify(LAB_ID_DIGEST, &journal)` для журналов обеих лабораторий
+  (`methods/guest/src/bin/aggregator.rs`). journal-байты лабораторий приходят
+  агрегатору полями `lab1_journal`/`lab2_journal` в `AggInput::Stage1/Stage2`.
+- Механика: раннер передаёт лабораторные receipts агрегатору через
+  `ExecutorEnvBuilder::add_assumption` (`bench/src/runner.rs` `prove_with`),
+  они подмешиваются в env для разрешения `env::verify` внутри гостя.
+  Итоговый receipt агрегатора достоверен только если верны лабораторные
+  receipts и их журналы совпадают с входом.
+- `core::LAB_ID_DIGEST` держится синхронно с реальным метод-id гостя
+  (`methods::LAB_ID` из `target/release/build/methods-*/out/methods.rs`).
+  После любых правок гостевой программы он меняется — обновить вручную,
+  иначе `env::verify` упадёт. image_id стабилен между пересборками при
+  неизменном коде.
+- R2-оптимизация: в раунде 2 при выборе Уэлча медиана группы не нужна
+  (m_hat=None), поэтому `materialize(sample, need_median)` пропускает
+  сортировку медианы и кладёт `median=f64::NAN`.
+
+## Гостевой std (не no_std)
+
+- Гости собираются на гостевом `std` risc0-zkvm
+  (`default-features=false, features=["std"]`). Для f64-математики
+  (`sqrt`, `powf`, …) у таргета `riscv32im-risc0-zkvm-elf` нет интринсиков
+  в core — строгое `#![no_std]` для гостей без libm-замен невозможно.
+  Математика самого `core` при этом остаётся no_std-совместимой.
+
 ## R (валидация, таблицы)
 
 - R: `D:\R\R-4.3.1\bin\Rscript.exe` (Windows).

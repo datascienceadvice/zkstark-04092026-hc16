@@ -6,5 +6,7 @@ edition = "2021"
 [workspace]
 
 [dependencies]
+# Гостевые программы собираются на гостевом std тулчейна risc0: f64-математика
+# (sqrt, powf и т.п.) в core для таргета riscv32im-risc0-zkvm-elf недоступна.
 risc0-zkvm = { version = "^2.3.2", default-features = false, features = ["std"] }
 zkstark-core = { path = "../../core" }
