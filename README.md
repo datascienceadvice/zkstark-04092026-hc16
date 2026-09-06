@@ -66,7 +66,7 @@ zkstark/
 │       ├── data.rs       # загрузка scenarios.csv / scenario_meta.csv / golden.csv
 │       ├── db.rs         # SQLite (runs, case_runs, assertion_errors)
 │       └── export.rs     # выгрузка run в report_<run>.csv / errors_<run>.csv
-├── analysis/             # таблицы для статьи + make_tables.R
+├── analysis/             # черновик статьи paper.md + таблицы + make_tables.R / make_paper_tables.R
 ├── results/              # сценарии, golden, zkstark.db, report_*.csv
 ├── scripts/              # R-golden, синхронизация Windows↔WSL, вспомогательное
 ├── design.txt            # первоначальный дизайн MVP
@@ -254,12 +254,14 @@ target/release/bench --export-run <run_id>    # → results/report_<run_id>.csv
 
 ```bash
 # Windows:
-& "D:\R\R-4.3.1\bin\Rscript.exe" analysis\make_tables.R
+& "D:\R\R-4.3.1\bin\Rscript.exe" analysis\make_tables.R     # CSV-таблицы + лог (UTF-8)
+& "D:\R\R-4.3.1\bin\Rscript.exe" analysis\make_paper_tables.R  # table_paper_*.md для article
 ```
 
-Скрипт читает `results/report_*.csv` и `results/golden.csv` и пишет
-`analysis/tables/table_*.csv` (dev-матрица по сценариям, full-подмножество,
-сравнение популярной аппроксимации Mood с точным p).
+Скрипты читают `results/report_*.csv` и `results/golden.csv` и пишут
+`analysis/tables/` (dev-матрица по сценариям, full-подмножество, сравнение
+популярной аппроксимации Mood с точным p); выбор актуальных прогонов
+автоматический. Черновик статьи с встроенными таблицами — `analysis/paper.md`.
 
 ---
 
@@ -290,7 +292,11 @@ target/release/bench --export-run <run_id>    # → results/report_<run_id>.csv
   = 0.571 (n05, нормальные n=3/4) и остаётся заметной даже на умеренных n
   (n07, гамма 40/40: 0.562; n19, 25/25: 0.429; n02, 8/8: 0.305); при малых
   p-значениях/больших эффектах она исчезает (n06: ~7e-8; n18: ~6e-6).
-  Полный список — `analysis/tables/table_mood_approx_vs_exact.csv`.
+  Вывод протокола при этом устойчив: **0 ложных значимостей** на 19 медианных
+  сценариях (все 7 значимых по M̂ остаются значимыми по точной объединённой
+  медиане); единственный разлёт — пограничный n01 (0.060 vs 0.031),
+  закрываемый Уэлча-ветвью (SW: обе группы нормальны).
+  Полный список — `analysis/tables/table_paper_mood.md`.
 - Гости собираются **обязательно** на гостевое `std` risc0-zkvm
   (`default-features=false, features=["std"]`): для f64-математики
   (`sqrt`, `powf`, …) в `core` таргета `riscv32im-risc0-zkvm-elf`

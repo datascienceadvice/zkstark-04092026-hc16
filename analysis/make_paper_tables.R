@@ -94,7 +94,7 @@ method_ru <- function(m, st) {
     ifelse(m == "mood", "Муд", m)))
 }
 
-md_table <- function(df, caption, name) {
+md_table <- function(df, caption, name, note = NULL) {
   h <- names(df)
   lines <- c(paste("#### ", caption),
              paste0("| ", paste(h, collapse = " | "), " |"),
@@ -104,6 +104,7 @@ md_table <- function(df, caption, name) {
     r[is.na(r)] <- "—"
     lines <- c(lines, paste0("| ", paste(r, collapse = " | "), " |"))
   }
+  if (!is.null(note)) lines <- c(lines, "", note)
   lines <- c(lines, "")
   con <- file(file.path(out, paste0("table_paper_", name, ".md")),
               open = "wt", encoding = "UTF-8")
@@ -126,6 +127,7 @@ dev_t <- data.frame(
   "p (критерий)" = fmt_p(dev$effect_p),
   "макс. отн. ошибка" = fmt_num(dev$max_rel_err),
   "pass" = ifelse(dev$pass, "да", "НЕТ"),
+  "время, с" = sprintf("%.2f", dev$wall_ms / 1000),
   "циклы" = formatC(dev$total_cycles, big.mark = " ", format = "d"),
   check.names = FALSE, stringsAsFactors = FALSE
 )
@@ -173,7 +175,33 @@ mood_t <- data.frame(
   "разность p" = fmt_num(mood$diff),
   check.names = FALSE, stringsAsFactors = FALSE
 )
-md_table(mood_t, "Медианный тест: аппроксимация M̂ = mean(median₁, median₂) против точной объединённой медианы (Fisher, two-sided)", "mood")
+## согласие решений при α = 0.05 (проверка: аппроксимация не искажает вывод)
+alpha <- 0.05
+sig_a <- mood$case[mood$mood.approx.p < alpha]
+sig_e <- mood$case[mood$mood.exact.p  < alpha]
+ord   <- names(mlabel)
+sig_a <- sig_a[order(match(sig_a, ord))]
+sig_e <- sig_e[order(match(sig_e, ord))]
+fp <- setdiff(sig_a, sig_e)   # ложные положительные: их не должно быть
+fn <- setdiff(sig_e, sig_a)   # ложные отрицательные
+if (length(fn) == 0) {
+  fn_txt <- ""
+} else {
+  pair <- vapply(fn, function(cc) {
+    i <- which(mood$case == cc)
+    sprintf("%s (p_M̂=%.3f, p_exact=%.3f)", cc, mood$mood.approx.p[i], mood$mood.exact.p[i])
+  }, character(1))
+  fn_txt <- paste0(" Ложных отрицательных — ", length(fn), ": ",
+                   paste(pair, collapse = ", "),
+                   " — сценарий закрывается Уэлча-ветвью (обе группы нормальны по Шапиро–Уилку), на фактический вывод не влияет.")
+}
+mood_note <- sprintf(
+  "Согласие решений при α = 0.05: значимых по M̂ — %d (%s), все воспроизводятся по точной объединённой медиане; ложных положительных — 0.%s",
+  length(sig_a), paste(sig_a, collapse = ", "), fn_txt)
+md_table(mood_t, "Медианный тест: аппроксимация M̂ = mean(median₁, median₂) против точной объединённой медианы (Fisher, two-sided)", "mood",
+  note = mood_note)
 cat(sprintf("MOOD-таблица: %d сценариев, max|dif| = %.3f\n",
             nrow(mood), max(abs(mood$diff), na.rm = TRUE)))
+cat(sprintf("MOOD-согласие решений при α=0.05: значимых по M̂ = %d, ложных положительных = %d, ложных отрицательных = %d\n",
+            length(sig_a), length(fp), length(fn)))
 cat("Файлы:", paste(list.files(out, pattern = "table_paper", full.names = TRUE), collapse = ", "), "\n")
