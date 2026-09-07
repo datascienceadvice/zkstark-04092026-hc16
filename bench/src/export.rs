@@ -12,7 +12,8 @@ pub fn export_run(conn: &Connection, run_id: i64, dir: &str) -> Result<(), Box<d
         "SELECT c.scenario, c.status, c.method,
                 c.sw1_w, c.sw1_p, c.sw2_w, c.sw2_p,
                 c.welch_t, c.welch_df, c.welch_p,
-                c.m_hat, c.mood_a, c.mood_b, c.mood_p,
+                c.welch_mean1, c.welch_mean2, c.welch_sd1, c.welch_sd2,
+                c.m_hat, c.median1, c.median2, c.mood_a, c.mood_b, c.mood_p,
                 c.total_cycles, c.user_cycles, c.segments, c.wall_ms,
                 c.asserts, c.max_rel_err, c.pass, c.error_msg
          FROM case_runs c WHERE c.run_id = ?1
@@ -22,7 +23,9 @@ pub fn export_run(conn: &Connection, run_id: i64, dir: &str) -> Result<(), Box<d
     let mut w = csv::Writer::from_path(cases_out)?;
     w.write_record(&[
         "case", "status", "method", "sw1_w", "sw1_p", "sw2_w", "sw2_p",
-        "welch_t", "welch_df", "welch_p", "m_hat", "mood_a", "mood_b", "mood_p",
+        "welch_t", "welch_df", "welch_p",
+        "welch_mean1", "welch_mean2", "welch_sd1", "welch_sd2",
+        "m_hat", "median1", "median2", "mood_a", "mood_b", "mood_p",
         "total_cycles", "user_cycles", "segments", "wall_ms",
         "asserts", "max_rel_err", "pass", "error",
     ])?;
@@ -39,7 +42,9 @@ pub fn export_run(conn: &Connection, run_id: i64, dir: &str) -> Result<(), Box<d
         w.write_record(&[
             f(0), f(1), f(2), f(3), f(4), f(5), f(6),
             f(7), f(8), f(9), f(10), f(11), f(12), f(13),
-            f(14), f(15), f(16), f(17), f(18), f(19), f(20), f(21),
+            f(14), f(15), f(16), f(17), f(18),
+            f(19), f(20), f(21), f(22), f(23),
+            f(24), f(25), f(26), f(27),
         ])?;
     }
     w.flush()?;

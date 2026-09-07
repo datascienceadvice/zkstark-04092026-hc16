@@ -13,6 +13,10 @@ use crate::special::ln_gamma;
 pub struct MedianTestResult {
     /// Оценка общей медианы: mean(median1, median2)
     pub m_hat: f64,
+    /// Медиана группы 1
+    pub median1: f64,
+    /// Медиана группы 2
+    pub median2: f64,
     /// Число наблюдений группы 1 строго больше M̂
     pub a: usize,
     /// Число наблюдений группы 2 строго больше M̂
@@ -88,11 +92,13 @@ pub fn fisher_two_sided_2x2(a: usize, nx: usize, b: usize, ny: usize) -> f64 {
 /// Полезно для симуляций и проверки; в zk-протоколе лаборатории используют
 /// только median(), count_above() и медианное решение агрегатора.
 pub fn mood_median_test(x: &[f64], y: &[f64]) -> MedianTestResult {
-    let m_hat = 0.5 * (median(x) + median(y));
+    let median1 = median(x);
+    let median2 = median(y);
+    let m_hat = 0.5 * (median1 + median2);
     let a = count_above(x, m_hat);
     let b = count_above(y, m_hat);
     let p_value = fisher_two_sided_2x2(a, x.len(), b, y.len());
-    MedianTestResult { m_hat, a, b, p_value }
+    MedianTestResult { m_hat, median1, median2, a, b, p_value }
 }
 
 #[cfg(test)]

@@ -131,6 +131,15 @@ dev_t <- data.frame(
   "циклы" = formatC(dev$total_cycles, big.mark = " ", format = "d"),
   check.names = FALSE, stringsAsFactors = FALSE
 )
+## точечные оценки: средние при Уэлче, медианы при Муде
+PEs <- ifelse(dev$method == "welch",
+              sprintf("%s / %s", fmt_num(dev$welch_mean1), fmt_num(dev$welch_mean2)),
+              ifelse(dev$method == "mood",
+                     sprintf("m₁ %s / m₂ %s", fmt_num(dev$median1), fmt_num(dev$median2)),
+                     "—"))
+dev_t <- cbind(dev_t[, 1:7], data.frame("mean₁/mean₂ · med₁/med₂" = PEs,
+                                        check.names = FALSE),
+               dev_t[, 8:ncol(dev_t)])
 md_table(dev_t, sprintf("Dev-матрица (run %d, fake-receipts; метод — по Шапиро–Уилку при α=0.05; погрешность — относительно golden из R)", dev_run), "dev")
 cat(sprintf("DEV-таблица: run %d, кейсов %d, ok=%d, expected_error=%d, pass=%d\n",
             dev_run, nrow(dev), sum(dev$status == "ok"),
@@ -152,6 +161,14 @@ if (!is.null(dfull) && nrow(dfull) > 0) {
     "сегментов" = as.character(ful$segments),
     check.names = FALSE, stringsAsFactors = FALSE
   )
+  PEs_full <- ifelse(ful$method == "welch",
+              sprintf("%s / %s", fmt_num(ful$welch_mean1), fmt_num(ful$welch_mean2)),
+              ifelse(ful$method == "mood",
+                     sprintf("m₁ %s / m₂ %s", fmt_num(ful$median1), fmt_num(ful$median2)),
+                     "—"))
+  ful_t <- cbind(ful_t[, 1:4], data.frame("mean₁/mean₂ · med₁/med₂" = PEs_full,
+                                          check.names = FALSE),
+                 ful_t[, 5:ncol(ful_t)])
   md_table(ful_t, sprintf("Full-STARK (run %d, настоящие доказательства)", full_run), "full")
   cat(sprintf("FULL-таблица: run %d, кейсов %d, все pass=%s\n",
               full_run, nrow(ful), all(ful$pass)))
@@ -167,6 +184,8 @@ mood <- mood[order(match(mood$case, names(mlabel))), ]
 mood_t <- data.frame(
   "Сценарий" = mood$case,
   "Описание" = mood$desc,
+  "med₁" = fmt_num(mood$median1),
+  "med₂" = fmt_num(mood$median2),
   "M̂" = fmt_num(mood$m_hat),
   "a" = as.character(mood$mood.approx.a),
   "b" = as.character(mood$mood.approx.b),

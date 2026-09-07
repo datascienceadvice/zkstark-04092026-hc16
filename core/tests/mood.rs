@@ -162,6 +162,8 @@ fn mood_small_cases_match_r_golden() {
 
         let r = mood_median_test(c.x, c.y);
         assert!((r.m_hat - c.m_hat).abs() < ABS, "{} m_hat", c.name);
+        assert!((r.median1 - c.median1).abs() < ABS, "{} median1", c.name);
+        assert!((r.median2 - c.median2).abs() < ABS, "{} median2", c.name);
         assert_eq!(r.a, c.a, "{} a", c.name);
         assert_eq!(r.b, c.b, "{} b", c.name);
         assert!(re(r.p_value, c.p_approx) < REL, "{} p_approx", c.name);

@@ -140,6 +140,8 @@ fn finish_mood(lab1: &LabResultRound2, lab2: &LabResultRound2, decision: &Stage1
     let ny = lab2.round1.stats.n;
     MedianTestResult {
         m_hat: decision.m_hat.unwrap_or(f64::NAN),
+        median1: lab1.round1.median,
+        median2: lab2.round1.median,
         a,
         b,
         p_value: fisher_two_sided_2x2(a, nx, b, ny),
@@ -243,5 +245,5 @@ pub enum AggOutput {
 /// (LAB_ID) и держится синхронно с гостевой сборкой: после любых правок гостя
 /// LAB_ID меняется, и его нужно обновить здесь вручную.
 pub const LAB_ID_DIGEST: [u32; 8] = [
-    2272067089, 1075530289, 2173383169, 15982908, 1213211435, 2534219988, 4193422313, 1569944809,
+    1004439141, 2032882931, 2313745450, 3887501708, 3892065074, 4216237220, 4180787024, 2582466225,
 ];

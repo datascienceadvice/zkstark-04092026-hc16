@@ -8,7 +8,9 @@ use methods::{AGGREGATOR_ELF, AGGREGATOR_ID, LAB_ELF, LAB_ID};
 use risc0_zkvm::{default_prover, ExecutorEnv, Receipt};
 use serde::Serialize;
 use std::time::Instant;
-use zkstark_core::{AggInput, AggOutput, LabInput, LabOutput, RawSample, Stage1Decision};
+use zkstark_core::{
+    analyze, AggInput, AggOutput, LabInput, LabOutput, RawSample, Stage1Decision,
+};
 
 struct ProofStat {
     wall_ms: u64,
@@ -258,6 +260,11 @@ pub fn run_case(case: &Scenario, golden: &GoldenValues, tol: f64) -> CaseRun {
     };
     checks.add_exact("method", got_method, gg("method").unwrap_or(f64::NAN));
 
+    // CPU-эталон для точечных оценок (средние/медианы), не входящих в golden:
+    // сверяем их между собой только когда обе группы нормальны (иначе analyze
+    // вернёт Err, и критерии с точечными оценками всё равно не сравнить).
+    let cpu = analyze(g1, g2, alpha).ok();
+
     checks.add("sw1.w", result.sw1.w, gg("sw1.w").unwrap());
     checks.add("sw1.p", result.sw1.p_value, gg("sw1.p").unwrap());
     checks.add("sw2.w", result.sw2.w, gg("sw2.w").unwrap());
@@ -279,6 +286,13 @@ pub fn run_case(case: &Scenario, golden: &GoldenValues, tol: f64) -> CaseRun {
                 checks.add("welch.t", w.t, gg("welch.t").unwrap());
                 checks.add("welch.df", w.df, gg("welch.df").unwrap());
                 checks.add("welch.p", w.p_value, gg("welch.p").unwrap());
+                // средние групп — golden не содержит; сверяем zk vs CPU analyze()
+                if let Some(cp) = cpu.as_ref().and_then(|p| p.welch.as_ref()) {
+                    checks.add("welch.mean1", w.mean1, cp.mean1);
+                    checks.add("welch.sd1", w.sd1, cp.sd1);
+                    checks.add("welch.mean2", w.mean2, cp.mean2);
+                    checks.add("welch.sd2", w.sd2, cp.sd2);
+                }
             }
         }
         zkstark_core::Method::Mood => {
@@ -287,6 +301,9 @@ pub fn run_case(case: &Scenario, golden: &GoldenValues, tol: f64) -> CaseRun {
                 checks.add_exact("mood.a", mr.a as f64, gg("mood.approx.a").unwrap());
                 checks.add_exact("mood.b", mr.b as f64, gg("mood.approx.b").unwrap());
                 checks.add("mood.p", mr.p_value, gg("mood.approx.p").unwrap());
+                // медианы групп — из golden (median1/median2)
+                checks.add("median1", mr.median1, gg("median1").unwrap());
+                checks.add("median2", mr.median2, gg("median2").unwrap());
             }
         }
     }

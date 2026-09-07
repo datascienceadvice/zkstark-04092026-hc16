@@ -192,6 +192,7 @@ fn print_result(zk: &PipelineResult, cpu: &PipelineResult) {
     match (&zk.welch, &cpu.welch) {
         (Some(w), Some(e)) => {
             println!("Уэлча: t={:.9} df={:.9} p={:.6}", w.t, w.df, w.p_value);
+            println!("  средние: mean1={:.9} mean2={:.9} (sd1={:.6}, sd2={:.6})", w.mean1, w.mean2, w.sd1, w.sd2);
             println!("  (эталон: t={:.9} df={:.9} p={:.6})", e.t, e.df, e.p_value);
         }
         _ => println!("(критерий Уэлча не выбран)"),
@@ -201,6 +202,10 @@ fn print_result(zk: &PipelineResult, cpu: &PipelineResult) {
             println!(
                 "Муд: M̂={:.9} a={} b={} p={:.6}",
                 m.m_hat, m.a, m.b, m.p_value
+            );
+            println!(
+                "  медианы: median1={:.9} median2={:.9}",
+                m.median1, m.median2
             );
             println!("  (эталон: a={} b={} p={:.6})", e.a, e.b, e.p_value);
         }
