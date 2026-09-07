@@ -1,13 +1,9 @@
 ## analysis/paper_tables_xlsx.R
-## Сводные (усреднённые) таблицы для статьи в формате xlsx — воспроизведение
-## существующих md-таблиц (table_paper_dev/full/mood), но с усреднением
-## числовых данных (по методу / по подмножеству) вместо построчных значений.
-##
-## Читает results/report_*.csv, golden.csv, scenario_meta.csv (тот же источник,
-## что make_paper_tables.R) и пишет analysis/tables/paper_tables.xlsx:
-##   лист "Dev-сводно"  — усреднение по методу (Уэлча / Муд / Все);
-##   лист "Full-сводно" — одно сводное значение по full-прогону;
-##   лист "Mood-сводно" — согласование M̂ и точной объединённой медианы.
+## Перенос таблиц для статьи из Markdown в xlsx без изменения данных:
+## листы Dev / Full / Mood повторяют построчно содержимое
+## table_paper_dev.md, table_paper_full.md, table_paper_mood.md.
+## Источник тот же, что у make_paper_tables.R: results/report_*.csv,
+## results/golden.csv, results/scenario_meta.csv.
 ## Запуск: Rscript analysis/paper_tables_xlsx.R [--dev <id> --full <id>]
 
 options(digits = 6, scipen = 4, warn = 1)
@@ -21,6 +17,7 @@ res  <- file.path(base, "results")
 out  <- file.path(base, "analysis", "tables")
 dir.create(out, showWarnings = FALSE, recursive = TRUE)
 
+## ---- русские описания сценариев (идентично make_paper_tables.R) ------------
 mlabel <- c(
   n01 = "Нормальные, равные (30/25)",
   n02 = "Нормальные, смещение среднего (8/8)",
@@ -43,7 +40,6 @@ mlabel <- c(
   n19 = "Равные средние, разные sd (25/25)",
   n20 = "Разность средних (32/32)"
 )
-ord <- names(mlabel)
 
 read.report <- function(run_id) {
   p <- file.path(res, sprintf("report_%d.csv", run_id))
@@ -52,7 +48,6 @@ read.report <- function(run_id) {
   d$run <- run_id
   d
 }
-
 args <- commandArgs(trailingOnly = TRUE)
 dev_override <- if ("--dev" %in% args) as.integer(args[which(args == "--dev") + 1]) else NA
 full_override <- if ("--full" %in% args) as.integer(args[which(args == "--full") + 1]) else NA
@@ -60,10 +55,11 @@ full_override <- if ("--full" %in% args) as.integer(args[which(args == "--full")
 files <- list.files(res, pattern = "^report_[0-9]+\\.csv$", full.names = TRUE)
 runs  <- sort(as.integer(sub(".*?report_([0-9]+)\\.csv$", "\\1", basename(files))))
 all   <- do.call(rbind, lapply(runs, read.report))
+meta  <- read.csv(file.path(res, "scenario_meta.csv"), stringsAsFactors = FALSE)
 
 golden <- read.csv(file.path(res, "golden.csv"), stringsAsFactors = FALSE)
-gwide <- reshape(golden[, c("case", "metric", "value")],
-                 idvar = "case", timevar = "metric", direction = "wide")
+gwide  <- reshape(golden[, c("case", "metric", "value")],
+                  idvar = "case", timevar = "metric", direction = "wide")
 names(gwide) <- sub("^value\\.", "", names(gwide))
 
 if (is.na(dev_override)) {
@@ -77,89 +73,111 @@ if (is.na(full_override)) {
 } else full_run <- full_override
 
 ddev <- read.report(dev_run)
-ddev$desc <- unname(mlabel[ddev$case])
-ddev$effect_p <- ifelse(ddev$method == "welch", ddev$welch_p, ddev$mood_p)
-
-wb <- openxlsx::createWorkbook()
-sty <- openxlsx::createStyle(textDecoration = "bold", halign = "center")
-sty2 <- openxlsx::createStyle(numFmt = "0.00")
-
-## ---- 1. Dev: усреднение по методу -----------------------------------------
-dev_ok <- subset(ddev, status == "ok")
-agg_dev <- do.call(rbind, lapply(c("welch", "mood", "all"), function(mm) {
-  dd <- if (mm == "all") dev_ok else subset(dev_ok, method == mm)
-  if (nrow(dd) == 0) return(NULL)
-  data.frame(
-    "Метод" = if (mm == "welch") "Уэлча" else if (mm == "mood") "Муд" else "Все",
-    "Сценариев" = nrow(dd),
-    "Значимых (p<0.05)" = sum(dd$effect_p < 0.05, na.rm = TRUE),
-    "Средняя макс. отн. ошибка" = signif(mean(dd$max_rel_err, na.rm = TRUE), 3),
-    "Среднее время, с" = round(mean(dd$wall_ms) / 1000, 2),
-    "Всего циклов" = sum(dd$total_cycles),
-    "Pass, %" = round(100 * mean(dd$pass), 1),
-    check.names = FALSE, stringsAsFactors = FALSE
-  )
-}))
-openxlsx::addWorksheet(wb, "Dev-сводно")
-openxlsx::writeData(wb, "Dev-сводно", agg_dev)
-openxlsx::addStyle(wb, "Dev-сводно", sty, rows = 1, cols = 1:ncol(agg_dev), gridExpand = TRUE)
-openxlsx::setColWidths(wb, "Dev-сводно", cols = 1:ncol(agg_dev), widths = c(8, 10, 12, 20, 13, 12, 9))
-cat(sprintf("Dev-сводно: run %d, кейсов %d (ok %d, expect_err %d), pass %d/%d\n",
-            dev_run, nrow(ddev), sum(ddev$status == "ok"),
-            sum(ddev$status == "expected_error"), sum(ddev$pass), nrow(ddev)))
-
-## ---- 2. Full: одно сводное значение ---------------------------------------
 dfull <- if (is.na(full_run)) NULL else read.report(full_run)
-if (!is.null(dfull) && nrow(dfull) > 0) {
-  dfull_ok <- subset(dfull, status == "ok")
-  full_row <- data.frame(
-    "Кейсов" = nrow(dfull_ok),
-    "Все pass" = ifelse(all(dfull_ok$pass), "да", "НЕТ"),
-    "Средняя макс. отн. ошибка" = signif(mean(dfull_ok$max_rel_err, na.rm = TRUE), 3),
-    "Среднее время, с" = round(mean(dfull_ok$wall_ms) / 1000, 0),
-    "Всего циклов" = sum(dfull_ok$total_cycles),
-    "Сегментов (см.)" = paste(unique(dfull_ok$segments), collapse = "/"),
-    check.names = FALSE, stringsAsFactors = FALSE
-  )
-  openxlsx::addWorksheet(wb, "Full-сводно")
-  openxlsx::writeData(wb, "Full-сводно", full_row)
-  openxlsx::addStyle(wb, "Full-сводно", sty, rows = 1, cols = 1:ncol(full_row), gridExpand = TRUE)
-  openxlsx::setColWidths(wb, "Full-сводно", cols = 1:ncol(full_row), widths = c(8, 9, 20, 13, 12, 14))
-  cat(sprintf("Full-сводно: run %d, кейсов %d, pass %s, ср.время %.0f с, циклов %d\n",
-              full_run, nrow(dfull_ok), all(dfull_ok$pass),
-              mean(dfull_ok$wall_ms)/1000, sum(dfull_ok$total_cycles)))
-} else {
-  cat("Full-сводно: не найдено full-прогона — лист пропущен\n")
+
+## ---- форматирование (идентично make_paper_tables.R) ------------------------
+fmt_num <- function(x) {
+  ifelse(is.na(x), "—",
+    ifelse(abs(x) < 1e-3 & x != 0, sprintf("%.1e", x), sprintf("%.4g", x)))
+}
+fmt_p <- function(x) {
+  ifelse(is.na(x), "—",
+    ifelse(x < 1e-4, sprintf("%.1e", x), sprintf("%.3f", x)))
+}
+method_ru <- function(m, st) {
+  ifelse(st == "expected_error", "— (SW), ошибка",
+    ifelse(m == "welch", "Уэлча",
+    ifelse(m == "mood", "Муд", m)))
 }
 
-## ---- 3. Mood: согласование M̂ против точной медианы ------------------------
-mood <- subset(gwide, !is.na(mood.approx.p))
-mood$diff <- mood$mood.exact.p - mood$mood.approx.p
-alpha <- 0.05
-sig_a <- sum(mood$mood.approx.p < alpha, na.rm = TRUE)
-sig_e <- sum(mood$mood.exact.p < alpha, na.rm = TRUE)
-agree <- mean((mood$mood.approx.p < alpha) == (mood$mood.exact.p < alpha), na.rm = TRUE)
-fp <- sum(mood$mood.approx.p < alpha & !(mood$mood.exact.p < alpha), na.rm = TRUE)
-fn <- sum(!(mood$mood.approx.p < alpha) & mood$mood.exact.p < alpha, na.rm = TRUE)
-mood_row <- data.frame(
-  "Сценариев" = nrow(mood),
-  "Значимых по M̂" = sig_a,
-  "Значимых по точной медиане" = sig_e,
-  "ЛП (наш да, истинная нет)" = fp,
-  "ЛО (наш нет, истинная да)" = fn,
-  "Согласие решений, %" = round(100 * agree, 1),
-  "Средняя |разность p|" = signif(mean(abs(mood$diff), na.rm = TRUE), 3),
-  "Макс. |разность p|" = signif(max(abs(mood$diff), na.rm = TRUE), 3),
-  "Совпало 100%" = ifelse(agree == 1, "да", "нет"),
+wb <- openxlsx::createWorkbook()
+
+## ---- 1. Dev: ровно как table_paper_dev.md ----------------------------------
+dev <- merge(ddev, meta[, c("case", "n1", "n2")], by = "case", all.x = TRUE)
+dev$desc <- unname(mlabel[dev$case])
+dev$effect_p <- ifelse(dev$method == "welch", dev$welch_p, dev$mood_p)
+dev <- dev[order(match(dev$case, names(mlabel))), ]
+dev_t <- data.frame(
+  "Сценарий" = dev$case,
+  "Описание" = dev$desc,
+  "n₁/n₂" = paste0(dev$n1, "/", dev$n2),
+  "Метод" = method_ru(dev$method, dev$status),
+  "SW p₁" = fmt_p(dev$sw1_p),
+  "SW p₂" = fmt_p(dev$sw2_p),
+  "p (критерий)" = fmt_p(dev$effect_p),
+  "макс. отн. ошибка" = fmt_num(dev$max_rel_err),
+  "pass" = ifelse(dev$pass, "да", "НЕТ"),
+  "время, с" = sprintf("%.2f", dev$wall_ms / 1000),
+  "циклы" = formatC(dev$total_cycles, big.mark = " ", format = "d"),
   check.names = FALSE, stringsAsFactors = FALSE
 )
-openxlsx::addWorksheet(wb, "Mood-сводно")
-openxlsx::writeData(wb, "Mood-сводно", mood_row)
-openxlsx::addStyle(wb, "Mood-сводно", sty, rows = 1, cols = 1:ncol(mood_row), gridExpand = TRUE)
-openxlsx::setColWidths(wb, "Mood-сводно", cols = 1:ncol(mood_row),
-                       widths = c(9, 12, 18, 14, 14, 15, 15, 14, 12))
-cat(sprintf("Mood-сводно: %d сценариев, значимых M̂=%d / точная=%d, ЛП=%d, ЛО=%d, согласие=%.1f%%\n",
-            nrow(mood), sig_a, sig_e, fp, fn, 100 * agree))
+PEs <- ifelse(dev$method == "welch",
+              sprintf("%s / %s", fmt_num(dev$welch_mean1), fmt_num(dev$welch_mean2)),
+              ifelse(dev$method == "mood",
+                     sprintf("m₁ %s / m₂ %s", fmt_num(dev$median1), fmt_num(dev$median2)),
+                     "—"))
+dev_t <- cbind(dev_t[, 1:7], data.frame("mean₁/mean₂ · med₁/med₂" = PEs,
+                                        check.names = FALSE),
+               dev_t[, 8:ncol(dev_t)])
+openxlsx::addWorksheet(wb, "Dev")
+openxlsx::writeData(wb, "Dev", dev_t)
+openxlsx::setColWidths(wb, "Dev", cols = 1:12, widths = c(9, 32, 8, 12, 9, 9, 12, 16, 7, 10, 12, 24))
+cat(sprintf("DEV лист: run %d, кейсов %d\n", dev_run, nrow(dev_t)))
+
+## ---- 2. Full: ровно как table_paper_full.md --------------------------------
+if (!is.null(dfull) && nrow(dfull) > 0) {
+  ful <- merge(dfull, meta[, c("case", "n1", "n2")], by = "case", all.x = TRUE)
+  ful$desc <- unname(mlabel[ful$case])
+  ful <- ful[order(match(ful$case, names(mlabel))), ]
+  ful_t <- data.frame(
+    "Сценарий" = ful$case,
+    "Описание" = ful$desc,
+    "n₁/n₂" = paste0(ful$n1, "/", ful$n2),
+    "Метод" = method_ru(ful$method, ful$status),
+    "макс. отн. ошибка" = fmt_num(ful$max_rel_err),
+    "время, с" = sprintf("%.0f", ful$wall_ms / 1000),
+    "циклы" = formatC(ful$total_cycles, big.mark = " ", format = "d"),
+    "сегментов" = as.character(ful$segments),
+    check.names = FALSE, stringsAsFactors = FALSE
+  )
+  PEs_full <- ifelse(ful$method == "welch",
+              sprintf("%s / %s", fmt_num(ful$welch_mean1), fmt_num(ful$welch_mean2)),
+              ifelse(ful$method == "mood",
+                     sprintf("m₁ %s / m₂ %s", fmt_num(ful$median1), fmt_num(ful$median2)),
+                     "—"))
+  ful_t <- cbind(ful_t[, 1:4], data.frame("mean₁/mean₂ · med₁/med₂" = PEs_full,
+                                          check.names = FALSE),
+                 ful_t[, 5:ncol(ful_t)])
+  openxlsx::addWorksheet(wb, "Full")
+  openxlsx::writeData(wb, "Full", ful_t)
+  openxlsx::setColWidths(wb, "Full", cols = 1:9, widths = c(9, 32, 8, 12, 16, 24, 10, 12, 12))
+  cat(sprintf("FULL лист: run %d, кейсов %d\n", full_run, nrow(ful_t)))
+} else {
+  cat("FULL лист: не найдено неполных (full) runs — пропускаю\n")
+}
+
+## ---- 3. Mood: ровно как table_paper_mood.md --------------------------------
+mood <- subset(gwide, !is.na(mood.approx.p))
+mood$desc <- unname(mlabel[mood$case])
+mood$diff <- mood$mood.exact.p - mood$mood.approx.p
+mood <- mood[order(match(mood$case, names(mlabel))), ]
+mood_t <- data.frame(
+  "Сценарий" = mood$case,
+  "Описание" = mood$desc,
+  "med₁" = fmt_num(mood$median1),
+  "med₂" = fmt_num(mood$median2),
+  "M̂" = fmt_num(mood$m_hat),
+  "a" = as.character(mood$mood.approx.a),
+  "b" = as.character(mood$mood.approx.b),
+  "p (наш, M̂)" = fmt_p(mood$mood.approx.p),
+  "p (истинная медиана)" = fmt_p(mood$mood.exact.p),
+  "разность p" = fmt_num(mood$diff),
+  check.names = FALSE, stringsAsFactors = FALSE
+)
+openxlsx::addWorksheet(wb, "Mood")
+openxlsx::writeData(wb, "Mood", mood_t)
+openxlsx::setColWidths(wb, "Mood", cols = 1:10, widths = c(9, 32, 10, 10, 10, 6, 6, 13, 16, 12))
+cat(sprintf("MOOD лист: %d сценариев\n", nrow(mood_t)))
 
 ## ---- запись ----------------------------------------------------------------
 xlsx_file <- file.path(out, "paper_tables.xlsx")
