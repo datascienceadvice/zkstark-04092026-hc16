@@ -4,12 +4,14 @@
 ##   results/scenarios.csv  — сырые данные (case, group, value) для входов гостей;
 ##   results/golden.csv     — длинный формат (case, metric, value):
 ##      median1, median2,              медианы групп (как median(x))
+##      q1_1, q3_1, q1_2, q3_2,        квартили групп (quantile type 7) — для M̂
 ##      sw1.w, sw1.p, sw2.w, sw2.p,     shapiro.test обеих групп
 ##      welch.t, welch.df, welch.p,     t.test(x, y, var.equal=FALSE)
 ##      mood.exact.p,                  эталон: точный Фишер 2×2 по ИСТИННОЙ
 ##                                     объединённой медиане median(c(x,y))
 ##      m_hat, mood.approx.a, mood.approx.b, mood.approx.p   — наш протокол:
-##         M̂=mean(median1,median2), count(>M̂) по группам, точный Фишер 2×2
+##         M̂ — квартильно-взвешенное (n×IQR-плотность) среднее медиан групп,
+##         count(>M̂) по группам, точный Фишер 2×2
 ##      method                        — выбор критерия при alpha: 1=welch, 2=mood
 ## Также: results/scenario_meta.csv — описания сценариев (для отчётности).
 ##
@@ -63,6 +65,11 @@ for (s in scen) {
 
   add("median1", if (ok1) median(g1) else NA_real_)
   add("median2", if (ok2) median(g2) else NA_real_)
+  ## квартили групп (тип 7, как в core::quartiles) — для квартильно-взвешенной M̂
+  add("q1_1", if (ok1) quantile(g1, 0.25) else NA_real_)
+  add("q3_1", if (ok1) quantile(g1, 0.75) else NA_real_)
+  add("q1_2", if (ok2) quantile(g2, 0.25) else NA_real_)
+  add("q3_2", if (ok2) quantile(g2, 0.75) else NA_real_)
   add("sw1.w",   if (!is.null(sw1)) sw1$statistic else NA_real_)
   add("sw1.p",   if (!is.null(sw1)) sw1$p.value   else NA_real_)
   add("sw2.w",   if (!is.null(sw2)) sw2$statistic else NA_real_)

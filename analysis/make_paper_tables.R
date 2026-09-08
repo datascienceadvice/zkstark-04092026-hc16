@@ -6,7 +6,7 @@
 ## последний неполный = full-STARK. Пишет в analysis/tables/:
 ##   table_paper_dev.md   — dev-матрица (метод, p-значения, погрешность, pass, циклы)
 ##   table_paper_full.md  — full-STARK подмножество (время, циклы, сегменты)
-##   table_paper_mood.md  — аппроксимация M̂ против истинной объединённой медианы
+##   table_paper_mood.md  — аппроксимация M̂ (квартильно-взвешенная) против истинной объединённой медианы
 ## Запуск: Rscript analysis/make_paper_tables.R
 ## (опц.)  Rscript analysis/make_paper_tables.R --dev <id> --full <id>
 
@@ -217,7 +217,7 @@ if (length(fn) == 0) {
 mood_note <- sprintf(
   "Согласие решений при α = 0.05: значимых по M̂ — %d (%s), все воспроизводятся по точной объединённой медиане; ложных положительных — 0.%s",
   length(sig_a), paste(sig_a, collapse = ", "), fn_txt)
-md_table(mood_t, "Медианный тест: аппроксимация M̂ = mean(median₁, median₂) против точной объединённой медианы (Fisher, two-sided)", "mood",
+md_table(mood_t, "Медианный тест: аппроксимация M̂ (взвешенное по n×IQR-плотности среднее медиан групп) против точной объединённой медианы (Fisher, two-sided)", "mood",
   note = mood_note)
 cat(sprintf("MOOD-таблица: %d сценариев, max|dif| = %.3f\n",
             nrow(mood), max(abs(mood$diff), na.rm = TRUE)))

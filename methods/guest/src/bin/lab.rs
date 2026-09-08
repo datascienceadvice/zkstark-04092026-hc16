@@ -1,7 +1,8 @@
 //! Лаборатория: обработка сырых данных без раскрытия значений.
 //!
 //! Два раунда протокола:
-//! 1. Round1 — сводные статистики + критерий Шапиро–Уилка + медиана группы;
+//! 1. Round1 — сводные статистики + критерий Шапиро–Уилка + медиана
+//!    и квартили Q1/Q3 группы;
 //! 2. Round2 — то же самое + число наблюдений > M̂ (для медианного теста Муда).
 //!
 //! Commit (journal) публикует только агрегированные метрики. Гость собирается
@@ -10,22 +11,25 @@
 use risc0_zkvm::guest::env;
 
 use zkstark_core::{
-    count_above, median, shapiro_wilk, summarize, LabInput, LabOutput, RawSample,
+    count_above, median, quartiles, shapiro_wilk, summarize, LabInput, LabOutput, RawSample,
 };
 
-/// Сводные статистики + Шапиро–Уилк + медиана группы.
+/// Сводные статистики + Шапиро–Уилк + медиана и квартили группы.
 ///
-/// `need_median` выключает сортировку медианы: во втором раунде при выборе
-/// Уэлча агрегатору медиана не нужна (она используется только для M̂ при Mood).
+/// `need_median` выключает сортировку медианы/квартилей: во втором раунде
+/// при выборе Уэлча агрегатору они не нужны (используются только для M̂ при
+/// Mood).
 fn materialize(sample: &RawSample, need_median: bool) -> zkstark_core::LabResult {
     let stats = summarize(&sample.values);
     let sw = shapiro_wilk(&sample.values).expect("invalid sample");
-    let median = if need_median {
-        median(&sample.values)
+    let (median, q1, q3) = if need_median {
+        let m = median(&sample.values);
+        let (l, u) = quartiles(&sample.values);
+        (m, l, u)
     } else {
-        f64::NAN
+        (f64::NAN, f64::NAN, f64::NAN)
     };
-    zkstark_core::LabResult { stats, sw, median }
+    zkstark_core::LabResult { stats, sw, median, q1, q3 }
 }
 
 fn main() {

@@ -102,6 +102,9 @@ sum_tab <- do.call(rbind, lapply(ord, function(id) {
     "N валидных" = n,
     "% значим (наш, M̂)" = round(100 * mean(R$sig_a, na.rm = TRUE), 1),
     "% значим (истинный)" = round(100 * mean(R$sig_e, na.rm = TRUE), 1),
+    "сред. p (наш, M̂)" = mean(R$p_a, na.rm = TRUE),
+    "сред. p (истинный)" = mean(R$p_e, na.rm = TRUE),
+    "дельта mean(p)" = mean(R$p_e, na.rm = TRUE) - mean(R$p_a, na.rm = TRUE),
     "Согласие решений, %" = round1(100 * ag),
     "Совпало 100%" = if (ag == 1) "да" else "нет",
     "ЛП (наш да, истинный нет)" = fp,
@@ -112,22 +115,26 @@ sum_tab <- do.call(rbind, lapply(ord, function(id) {
 
 ## ---- запись xlsx (только сводная) -----------------------------------------
 sum_tab$"N валидных"[sum_tab$"N валидных" == 0] <- NA
-sum_tab$"% значим (наш, M̂)"[is.na(sum_tab$"N валидных")] <- NA
-sum_tab$"% значим (истинный)"[is.na(sum_tab$"N валидных")] <- NA
-sum_tab$"Согласие решений, %"[is.na(sum_tab$"N валидных")] <- NA
-sum_tab$"Совпало 100%"[is.na(sum_tab$"N валидных")] <- "—"
-sum_tab$"ЛП (наш да, истинный нет)"[is.na(sum_tab$"N валидных")] <- NA
-sum_tab$"ЛО (наш нет, истинный да)"[is.na(sum_tab$"N валидных")] <- NA
+that <- sum_tab$"N валидных"
+for (cc in c("% значим (наш, M̂)", "% значим (истинный)", "сред. p (наш, M̂)",
+             "сред. p (истинный)", "дельта mean(p)", "Согласие решений, %"))
+  sum_tab[[cc]][is.na(that)] <- NA
+sum_tab$"Совпало 100%"[is.na(that)] <- "—"
+sum_tab$"ЛП (наш да, истинный нет)"[is.na(that)] <- NA
+sum_tab$"ЛО (наш нет, истинный да)"[is.na(that)] <- NA
 
 xlsx_file <- file.path(out_dir, "mood_power_comparison.xlsx")
 wb <- openxlsx::createWorkbook()
 openxlsx::addWorksheet(wb, "Согласие")
 openxlsx::writeData(wb, sheet = "Согласие", x = sum_tab)
-## числовой формат для p: 4 значащих
+## числовой формат для p и согласия: 3 значащих
+openxlsx::addStyle(wb, "Согласие", openxlsx::createStyle(numFmt = "0.000"), rows = 2:(nrow(sum_tab)+1),
+                   cols = c(6, 7, 8), gridExpand = TRUE)
 openxlsx::addStyle(wb, "Согласие", openxlsx::createStyle(numFmt = "0.0"), rows = 2:(nrow(sum_tab)+1),
-                   cols = c(4, 5, 6), gridExpand = TRUE)
-openxlsx::setColWidths(wb, "Согласие", cols = 1:6, widths = c(9, 32, 9, 14, 14, 14))
-openxlsx::setColWidths(wb, "Согласие", cols = 7:9, widths = c(12, 18, 18))
+                   cols = c(4, 5, 9), gridExpand = TRUE)
+nms <- names(sum_tab)
+openxlsx::setColWidths(wb, "Согласие", cols = seq_along(nms),
+                       widths = c(9, 32, 9, 13, 13, 13, 13, 13, 13, 12, 18, 18))
 openxlsx::saveWorkbook(wb, xlsx_file, overwrite = TRUE)
 
 cat(sprintf("Записано: %s\n", xlsx_file))

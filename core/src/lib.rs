@@ -19,7 +19,7 @@ pub mod welch; // Уэлча t-тест
 
 use serde::{Deserialize, Serialize};
 
-pub use mood::{count_above, fisher_two_sided_2x2, median, mood_median_test, MedianTestResult};
+pub use mood::{count_above, fisher_two_sided_2x2, mhat_quartile, median, mood_median_test, quartiles, MedianTestResult};
 pub use shapiro::{shapiro_wilk, ShapiroResult};
 pub use summary::{summarize, DescriptiveStats, SummaryStats};
 pub use welch::{welch, WelchResult};
@@ -49,19 +49,26 @@ pub enum Method {
 /// Результат первого (подготовительного) раунда лаборатории.
 ///
 /// Присылается агрегатору до начала сравнения: сводные статистики для
-/// Уэлча, результат Шапиро–Уилка и медиана группы (для M̂ агрегатора).
+/// Уэлча, результат Шапиро–Уилка, медиана и квартили Q1/Q3 группы
+/// (квартили нужны для квартильно-взвешенной M̂ при медианном критерии).
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct LabResult {
     pub stats: SummaryStats,
     pub sw: ShapiroResult,
+    /// Медиана группы (R `median`, тип 7)
     pub median: f64,
+    /// Нижний квартиль Q1 (R `quantile(0.25)`, тип 7)
+    pub q1: f64,
+    /// Верхний квартиль Q3 (R `quantile(0.75)`, тип 7)
+    pub q3: f64,
 }
 
 /// Решение агрегатора по итогам первого раунда.
 ///
 /// Выбирает критерий (Method) и, если выбран Mood, возвращает оценку общей
-/// медианы M̂ = mean(median1, median2), которую лаборатории используют для
-/// подсчёта count_above во втором раунде.
+/// медианы M̂ — взвешенное по объёму и квартильной плотности среднее медиан
+/// групп, которое лаборатории используют для подсчёта count_above во втором
+/// раунде.
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
 pub struct Stage1Decision {
     pub method: Method,
@@ -101,7 +108,10 @@ pub fn stage1(lab1: &LabResult, lab2: &LabResult, alpha: f64) -> Stage1Decision 
         Stage1Decision {
             method: Method::Mood,
             alpha,
-            m_hat: Some(0.5 * (lab1.median + lab2.median)),
+            m_hat: Some(mhat_quartile(
+                lab1.stats.n, lab1.median, lab1.q3 - lab1.q1,
+                lab2.stats.n, lab2.median, lab2.q3 - lab2.q1,
+            )),
         }
     }
 }
@@ -132,7 +142,7 @@ pub fn stage2(
     }
 }
 
-/// Завершение медманного теста по count_above из второго раунда.
+/// Завершение медианного теста по count_above из второго раунда.
 fn finish_mood(lab1: &LabResultRound2, lab2: &LabResultRound2, decision: &Stage1Decision) -> MedianTestResult {
     let a = lab1.count_above.unwrap_or(0);
     let b = lab2.count_above.unwrap_or(0);
@@ -160,11 +170,15 @@ pub fn analyze(x: &[f64], y: &[f64], alpha: f64) -> Result<PipelineResult, Strin
         stats: summarize(x),
         sw: sw1,
         median: median(x),
+        q1: quartiles(x).0,
+        q3: quartiles(x).1,
     };
     let lab2 = LabResult {
         stats: summarize(y),
         sw: sw2,
         median: median(y),
+        q1: quartiles(y).0,
+        q3: quartiles(y).1,
     };
     let decision = stage1(&lab1, &lab2, alpha);
     let lab1r2 = LabResultRound2 {
@@ -245,5 +259,5 @@ pub enum AggOutput {
 /// (LAB_ID) и держится синхронно с гостевой сборкой: после любых правок гостя
 /// LAB_ID меняется, и его нужно обновить здесь вручную.
 pub const LAB_ID_DIGEST: [u32; 8] = [
-    1004439141, 2032882931, 2313745450, 3887501708, 3892065074, 4216237220, 4180787024, 2582466225,
+    4236911101, 827670109, 4153799505, 1499773527, 1704375809, 1979449711, 2952322646, 1487221497,
 ];

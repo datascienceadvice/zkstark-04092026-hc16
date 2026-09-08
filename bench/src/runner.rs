@@ -275,6 +275,11 @@ pub fn run_case(case: &Scenario, golden: &GoldenValues, tol: f64) -> CaseRun {
     if let Some(exp) = gg("median2") {
         checks.add("median2", lab2.median, exp);
     }
+    // квартили групп — для квартильно-взвешенной M̂ (golden.q1_*/q3_*)
+    if let Some(exp) = gg("q1_1") { checks.add("q1_1", lab1.q1, exp); }
+    if let Some(exp) = gg("q3_1") { checks.add("q3_1", lab1.q3, exp); }
+    if let Some(exp) = gg("q1_2") { checks.add("q1_2", lab2.q1, exp); }
+    if let Some(exp) = gg("q3_2") { checks.add("q3_2", lab2.q3, exp); }
 
     let method = Some(match result.method {
         zkstark_core::Method::Welch => MethodOutcome::Welch,

@@ -156,11 +156,25 @@ if (!is.null(dfull) && nrow(dfull) > 0) {
   cat("FULL лист: не найдено неполных (full) runs — пропускаю\n")
 }
 
-## ---- 3. Mood: ровно как table_paper_mood.md --------------------------------
+## ---- 3. Mood: ровно как table_paper_mood.md + симуляция 1000 репликаций ----
 mood <- subset(gwide, !is.na(mood.approx.p))
 mood$desc <- unname(mlabel[mood$case])
 mood$diff <- mood$mood.exact.p - mood$mood.approx.p
 mood <- mood[order(match(mood$case, names(mlabel))), ]
+
+## средние по 1000 репликаций из mood_power_comparison.xlsx (лист "Согласие")
+sim <- openxlsx::read.xlsx(file.path(out, "mood_power_comparison.xlsx"), sheet = 1, check.names = FALSE)
+simk <- data.frame(
+  case = sim[[1]],
+  mean_p_approx = as.numeric(sim[[6]]),
+  mean_p_exact = as.numeric(sim[[7]]),
+  delta = as.numeric(sim[[8]]),
+  agree = as.numeric(sim[[9]]),
+  stringsAsFactors = FALSE
+)
+mood <- merge(mood, simk, by = "case", all.x = TRUE)
+mood <- mood[order(match(mood$case, names(mlabel))), ]
+
 mood_t <- data.frame(
   "Сценарий" = mood$case,
   "Описание" = mood$desc,
@@ -172,11 +186,17 @@ mood_t <- data.frame(
   "p (наш, M̂)" = fmt_p(mood$mood.approx.p),
   "p (истинная медиана)" = fmt_p(mood$mood.exact.p),
   "разность p" = fmt_num(mood$diff),
+  "сред. p (наш, M̂), 1000 реплик" = fmt_num(mood$mean_p_approx),
+  "сред. p (истинный), 1000 реплик" = fmt_num(mood$mean_p_exact),
+  "дельта mean(p)" = fmt_num(mood$delta),
+  "% согласованности (1000 реплик)" = ifelse(is.na(mood$agree), "—",
+                                              sprintf("%.1f", mood$agree)),
   check.names = FALSE, stringsAsFactors = FALSE
 )
 openxlsx::addWorksheet(wb, "Mood")
 openxlsx::writeData(wb, "Mood", mood_t)
-openxlsx::setColWidths(wb, "Mood", cols = 1:10, widths = c(9, 32, 10, 10, 10, 6, 6, 13, 16, 12))
+openxlsx::setColWidths(wb, "Mood", cols = 1:14,
+                       widths = c(9, 32, 10, 10, 10, 6, 6, 13, 16, 12, 18, 18, 14, 24))
 cat(sprintf("MOOD лист: %d сценариев\n", nrow(mood_t)))
 
 ## ---- запись ----------------------------------------------------------------

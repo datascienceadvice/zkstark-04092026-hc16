@@ -1,15 +1,19 @@
 //! Кросс-валидация медианного теста Муда, точного Фишера 2×2 и медиан
 //! против эталонов R 4.3.1 (`scripts/golden.R`).
 //!
+//! Медианный тест использует квартильно-взвешенную оценку общей медианы M̂
+//! (`mhat_quartile`: веса n×IQR-плотность), синхронную с R `mood_approx`.
+//!
 //! Три группы тестов:
 //!   1) точный Фишер 2×2 по таблицам `(a, nx, b, ny)` всех 20 сценариев —
 //!      против `mood.approx.p` из results/golden.csv (fisher.test, two.sided);
-//!   2) `median`/`count_above`/`mood_median_test` на малых сценариях
-//!      (n05, n14, n16, n19) — против `median1/median2/m_hat/mood.approx.*`;
+//!   2) `median`/`quartiles`/`count_above`/`mood_median_test` на малых сценариях
+//!      (n05, n14, n16, n19) — против `median1/median2/m_hat/mood.approx.*` и
+//!      квартилей `q1_*/q3_*`;
 //!   3) "идеальная" версия по истинной объединённой медиане `median(c(x, y))`
 //!      — против `mood.exact.p`.
 
-use zkstark_core::{count_above, fisher_two_sided_2x2, median, mood_median_test};
+use zkstark_core::{count_above, fisher_two_sided_2x2, median, mood_median_test, quartiles};
 
 const REL: f64 = 1e-9; // относительный допуск для p-значений (как в bench --tol)
 const ABS: f64 = 1e-12; // абсолютный допуск для медиан/оценок
@@ -21,7 +25,7 @@ fn re(p: f64, e: f64) -> f64 {
 /// «Идеальная» версия теста: порог — истинная объединённая медиана объединённого
 /// пула как в R `mood_exact` (median(c(x, y))).
 fn mood_exact(x: &[f64], y: &[f64]) -> f64 {
-    let mut pooled: Vec<f64> = x.iter().chain(y.iter()).copied().collect();
+    let pooled: Vec<f64> = x.iter().chain(y.iter()).copied().collect();
     let m0 = median(&pooled);
     let a = count_above(x, m0);
     let b = count_above(y, m0);
@@ -32,21 +36,21 @@ fn mood_exact(x: &[f64], y: &[f64]) -> f64 {
 fn fisher_tables_match_r_golden() {
     // (name, a, nx, b, ny, mood.approx.p — Fisher exact two-sided из R)
     let cases: &[(&str, usize, usize, usize, usize, f64)] = &[
-        ("n01", 19, 30, 9, 25, 0.0597556500932658),
+        ("n01", 19, 30, 8, 25, 0.0305736072985409),
         ("n02", 3, 8, 6, 8, 0.314685314685315),
-        ("n03", 9, 60, 35, 60, 0.00000130296339087046),
-        ("n04", 89, 200, 18, 30, 0.121033288225837),
-        ("n06", 4, 40, 28, 40, 0.0000000487530271507797),
+        ("n03", 21, 60, 40, 60, 0.000933541866654601),
+        ("n04", 96, 200, 19, 30, 0.169766442282897),
+        ("n06", 12, 40, 33, 40, 0.00000392451556748791),
         ("n07", 25, 40, 19, 40, 0.261065283603835),
-        ("n08", 17, 50, 27, 50, 0.0692640439176866),
-        ("n09", 11, 35, 23, 35, 0.00805982614081151),
-        ("n10", 16, 45, 31, 45, 0.00291780153116564),
+        ("n08", 22, 50, 28, 50, 0.317340011285686),
+        ("n09", 11, 35, 21, 35, 0.0300801010357064),
+        ("n10", 18, 45, 32, 45, 0.00550595746315419),
         ("n11", 20, 40, 20, 40, 1.0),
         ("n12", 21, 50, 19, 50, 0.838416643920297),
-        ("n13", 422, 1000, 561, 1000, 0.000000000632714278885694),
-        ("n17", 15, 38, 20, 38, 0.357427623016661),
+        ("n13", 421, 1000, 559, 1000, 0.000000000838494307832576),
+        ("n17", 17, 38, 20, 38, 0.646562448930008),
         ("n18", 21, 60, 45, 60, 0.0000191391765604085),
-        ("n20", 10, 32, 24, 32, 0.000966754448703913),
+        ("n20", 11, 32, 26, 32, 0.000309399839677127),
     ];
     for &(name, a, nx, b, ny, exp) in cases {
         let got = fisher_two_sided_2x2(a, nx, b, ny);
@@ -61,6 +65,10 @@ struct SmallCase<'a> {
     y: &'a [f64],
     median1: f64,
     median2: f64,
+    q1_1: f64,
+    q3_1: f64,
+    q1_2: f64,
+    q3_2: f64,
     m_hat: f64,
     a: usize,
     b: usize,
@@ -112,7 +120,11 @@ fn mood_small_cases_match_r_golden() {
             y: &n05_y,
             median1: 0.256852925536838,
             median2: 1.52835697545291,
-            m_hat: 0.892604950494872,
+            q1_1: -1.06874900333673,
+            q3_1: 0.574088328811803,
+            q1_2: 0.499230634463094,
+            q3_2: 2.28801906522255,
+            m_hat: 0.956777287115351,
             a: 0,
             b: 2,
             p_approx: 0.428571428571428,
@@ -124,10 +136,14 @@ fn mood_small_cases_match_r_golden() {
             y: &n14_y,
             median1: 0.286312571534918,
             median2: 0.70650276844121,
-            m_hat: 0.496407669988064,
-            a: 4,
+            q1_1: -0.128924619568107,
+            q3_1: 0.65433185947186,
+            q1_2: 0.214715342389008,
+            q3_2: 1.62616375394101,
+            m_hat: 0.444763873508706,
+            a: 5,
             b: 8,
-            p_approx: 0.220346755142824,
+            p_approx: 0.41364921254543,
             p_exact: 0.41364921254543,
         },
         SmallCase {
@@ -136,7 +152,11 @@ fn mood_small_cases_match_r_golden() {
             y: &n16_y,
             median1: -0.120830354996064,
             median2: 1.5432342271345,
-            m_hat: 0.711201936069218,
+            q1_1: -0.787433373722583,
+            q3_1: 0.774988858496794,
+            q1_2: 0.645429209110816,
+            q3_2: 4.60018327587651,
+            m_hat: 0.350420037971789,
             a: 1,
             b: 2,
             p_approx: 1.0,
@@ -148,10 +168,14 @@ fn mood_small_cases_match_r_golden() {
             y: &n19_y,
             median1: 0.130833295076603,
             median2: -0.395874352947953,
-            m_hat: -0.132520528935675,
-            a: 15,
+            q1_1: -0.749391252100094,
+            q3_1: 0.498728154261132,
+            q1_2: -1.46392638867971,
+            q3_2: 1.37786554881963,
+            m_hat: -0.02990222745866,
+            a: 13,
             b: 12,
-            p_approx: 0.570915971188623,
+            p_approx: 1.0,
             p_exact: 1.0,
         },
     ];
@@ -159,6 +183,13 @@ fn mood_small_cases_match_r_golden() {
     for c in cases {
         assert!((median(c.x) - c.median1).abs() < ABS, "{} median1", c.name);
         assert!((median(c.y) - c.median2).abs() < ABS, "{} median2", c.name);
+        // квартили: проверяем что core::quartiles совпадает с R quantile (тип 7)
+        let (l1, u1) = quartiles(c.x);
+        let (l2, u2) = quartiles(c.y);
+        assert!((l1 - c.q1_1).abs() < ABS, "{} q1_1", c.name);
+        assert!((u1 - c.q3_1).abs() < ABS, "{} q3_1", c.name);
+        assert!((l2 - c.q1_2).abs() < ABS, "{} q1_2", c.name);
+        assert!((u2 - c.q3_2).abs() < ABS, "{} q3_2", c.name);
 
         let r = mood_median_test(c.x, c.y);
         assert!((r.m_hat - c.m_hat).abs() < ABS, "{} m_hat", c.name);

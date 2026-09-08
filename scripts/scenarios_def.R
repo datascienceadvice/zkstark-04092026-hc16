@@ -2,7 +2,7 @@
 ##
 ## Источник единой правды для:
 ##   - scen: список сценариев (id, name, alpha, fun(grp, seed));
-##   - mood_approx: наш протокол (M̂=mean(median1,median2) + Фишер 2×2);
+##   - mood_approx: наш протокол (квартильно-взвешенная M̂ + Фишер 2×2);
 ##   - mood_exact:  истинный медианный тест (объединённая медиана + Фишер 2×2).
 ##
 ## Подключается и golden.R, и analysis/mood_power_comparison.R, чтобы
@@ -59,13 +59,29 @@ scen <- list(
 )
 
 ## ---- вспомогательные функции ---------------------------------------------
-## Наш протокол: M̂=mean(median1,median2) и count(>M̂), затем точный Фишер 2×2.
+## Квартильная плотность: d = 0.5/IQR (линейная аппроксимация CDF в
+## окрестности медианы). При IQR == 0 (вырожденная/дискретная зона) — 0.
+iqr_density <- function(x) {
+  q <- unname(quantile(x, c(0.25, 0.75)))
+  iqr <- q[2] - q[1]
+  if (is.na(iqr) || iqr <= 0) 0 else 0.5 / iqr
+}
+
+## Наш протокол: M̂ — взвешенное среднее медиан групп с весами n_j × d_j
+## (объём × квартильная плотность), затем count(>M̂) и точный Фишер 2×2.
+## Если обе плотности нулевые — веса по объёмам выборок.
 mood_approx <- function(x, y) {
-  m_hat <- unname(mean(c(median(x), median(y))))
+  n1 <- length(x); n2 <- length(y)
+  d1 <- iqr_density(x); d2 <- iqr_density(y)
+  w1 <- n1 * d1; w2 <- n2 * d2
+  m_hat <- if (w1 + w2 > 0) {
+    (w1 * median(x) + w2 * median(y)) / (w1 + w2)
+  } else {
+    (n1 * median(x) + n2 * median(y)) / (n1 + n2)
+  }
   a <- sum(x > m_hat)
   b <- sum(y > m_hat)
-  nx <- length(x); ny <- length(y)
-  tab <- matrix(c(a, nx - a, b, ny - b), nrow = 2, byrow = TRUE)
+  tab <- matrix(c(a, n1 - a, b, n2 - b), nrow = 2, byrow = TRUE)
   p <- fisher.test(tab, alternative = "two.sided")$p.value
   list(m_hat = m_hat, a = a, b = b, p = p)
 }
