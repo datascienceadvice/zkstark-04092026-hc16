@@ -27,8 +27,8 @@ Risc Zero zkVM: автоматический выбор критерия меж�
 - **режимы**: `dev` (fake-receipts, честный journal — для быстрого CI) и
   `full` (настоящие STARK-доказательства).
 
-> Рабочая копия разрабатывается в **Windows** (D:\lair\zkstark), но Risc Zero
-> собирается только внутри **WSL2/Ubuntu** (у гостевого тулчейна нет Windows-сборки).
+> Исходники доступны на Windows и/или Linux (WSL2). Однако Risc Zero
+> собирается только внутри Linux-окружения (у гостевого тулчейна нет Windows-сборки).
 > См. «Сборка и запуск».
 
 ---
@@ -67,11 +67,23 @@ zkstark/
 │       ├── data.rs       # загрузка scenarios.csv / scenario_meta.csv / golden.csv
 │       ├── db.rs         # SQLite (runs, case_runs, assertion_errors)
 │       └── export.rs     # выгрузка run в report_<run>.csv / errors_<run>.csv
-├── analysis/             # черновик статьи paper.md + таблицы + make_tables.R / make_paper_tables.R
+├── analysis/             # скрипты для генерации таблиц статьи + вспомогательные R-файлы
+│   ├── tables/           # выходные таблицы (csv, xlsx, md) для статьи
+│   ├── make_tables.R     # генерация таблиц из report_*.csv и golden.csv
+│   ├── make_paper_tables.R # генерация таблиц в формате md (для черновика статьи)
+│   ├── paper_tables_xlsx.R # генерация таблицы paper_tables.xlsx (для статьи)
+│   ├── mood_power_comparison.R # сравнение мощности точного и аппроксимированного Mood-теста (1000 реплик)
+│   └── mood_weighted.R   # вспомогательный анализ взвешенного теста
 ├── results/              # сценарии, golden, zkstark.db, report_*.csv
 ├── scripts/              # R-golden, синхронизация Windows↔WSL, вспомогательное
+│   ├── golden.R          # генерация golden.csv
+│   ├── scenarios_def.R   # определения сценариев для golden.R
+│   └── sync_to_wsl.sh    # скрипт синхронизации (требует переменных SRC и DST)
 ├── design.txt            # первоначальный дизайн MVP
+├── how.txt               # подробное описание протокола (технические детали)
 ├── sim_median_test.R     # симуляции свойств медианного теста (для статьи)
+├── LICENSE               # лицензия (MIT)
+├── Cargo.lock            # фиксация зависимостей (для воспроизводимости)
 └── zkstark.Rproj         # RStudio-проект
 ```
 
@@ -264,13 +276,15 @@ Risc Zero собирается **только** внутри WSL2 (Linux): у ri
 
 Предпосылки (в WSL2/Ubuntu): Rust stable, `rzup` → `cargo-risczero` 2.3.2,
 `r0vm` 2.3.2, тулчейн `risc0` 1.97.0 (ядро RISC-V). Если рабочие файлы
-менялись на Windows — сначала синхронизировать:
+менялись на Windows — сначала синхронизировать (задайте переменные SRC и DST):
 
 ```bash
-wsl -e bash -lc "bash /mnt/d/lair/zkstark/scripts/sync_to_wsl.sh"
+export SRC=/mnt/c/path/to/zkstark   # путь к Windows-копии в WSL
+export DST=/home/user/zkstark        # путь к WSL-копии (будет создана)
+bash scripts/sync_to_wsl.sh
 ```
 
-Далее все команды — внутри WSL (рабочий каталог `~/zkstark`):
+Далее все команды — внутри WSL (рабочий каталог — корень репозитория):
 
 ```bash
 # тесты спецификаций и протокола
@@ -306,25 +320,24 @@ target/release/bench --export-run <run_id>    # → results/report_<run_id>.csv
 ### Сводные таблицы для статьи
 
 ```bash
-# Windows:
-& "D:\R\R-4.3.1\bin\Rscript.exe" analysis\make_tables.R     # CSV-таблицы + лог (UTF-8)
-& "D:\R\R-4.3.1\bin\Rscript.exe" analysis\make_paper_tables.R  # table_paper_*.md для article
+# Linux/WSL:
+Rscript analysis/make_tables.R     # CSV-таблицы + лог (UTF-8)
+Rscript analysis/make_paper_tables.R  # table_paper_*.md для article
 ```
 
 Скрипты читают `results/report_*.csv` и `results/golden.csv` и пишут
 `analysis/tables/` (dev-матрица по сценариям, full-подмножество, сравнение
 популярной аппроксимации Mood с точным p); выбор актуальных прогонов
-автоматический. Черновик статьи с встроенными таблицами — `analysis/paper.md`.
+автоматический. Результаты доступны в `analysis/tables/` в виде csv, xlsx и md.
 
 ---
 
 ## Результаты (зафиксировано в results/)
 
-- **dev-матрица (`results/report_16.csv`, свежие повторы в БД с тем же
-  результатом)**: 20/20 сценариев, 19 `ok` +
+- **dev-матрица (`results/report_3.csv`)**: 20/20 сценариев, 19 `ok` +
   1 `expected_error` (константная группа, SW-ошибка намеренно); все проверки
   `pass`, max_rel_err ≈ 1.8e-12; ~86.6M циклов суммарно за ~9 c.
-- **full-подмножество (`results/report_17.csv`, настоящие proof)**: n01, n02, n16 (Уэлча,
+- **full-подмножество (`results/report_2.csv`, настоящие proof)**: n01, n02, n16 (Уэлча,
   включая n=3) — все `pass`: n01 ≈ 817 c (~13.6 мин, 1.44M циклов), n02 ≈
   515 c, n16 ≈ 368 c; композиция через `env::verify` работает и в боевом
   режиме. Медианный сценарий n06 в full упёрся в ограничение памяти

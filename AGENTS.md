@@ -8,17 +8,20 @@ zkstark — ZK-протокол сравнения двух независимы
 
 ## Критично: среда сборки
 
-- Исходник на Windows: `D:\lair\zkstark` (это cwd). Реальное ядро —
-  WSL2/Ubuntu, `~/zkstark` (`wsl -e bash -lc "..."`).
+- Исходник может быть на Windows и/или в Linux (WSL2/Ubuntu).
 - **Нативный сбор в Windows невозможен**: гости Risc Zero требуют
   `riscv32im-risc0-zkvm-elf`, тулчейна `risc0` (rzup), которых нет на Windows.
-  Все `cargo ...` команды запускать внутри WSL.
+  Все `cargo ...` команды запускать внутри WSL/Linux.
 - После правок на Windows синхронизировать в WSL:
-  `wsl -e bash -lc "bash /mnt/d/lair/zkstark/scripts/sync_to_wsl.sh"`
+  ```bash
+  export SRC=/mnt/c/path/to/zkstark   # путь к Windows-копии в WSL
+  export DST=/home/user/zkstark        # путь к WSL-копии (будет создана)
+  bash scripts/sync_to_wsl.sh
+  ```
 - Guest'ы пересобираются автоматически (methods/build.rs → ризк0_build
   embed_methods) при сборке crates `methods`/`host`/`bench`.
 
-## Команды (выполнять в WSL, cwd `~/zkstark`)
+## Команды (выполнять в WSL, cwd — корень репозитория)
 
 ```bash
 # тесты ядра и протокола
@@ -91,7 +94,7 @@ target/release/bench --export-run <run_id>    # результаты в results/
 
 ## R (валидация, таблицы)
 
-- R: `D:\R\R-4.3.1\bin\Rscript.exe` (Windows).
+- R 4.3.1 (или совместимая версия).
 - `scripts/golden.R` — генерация `results/golden.csv` (не менять сценарии
   без перегенерации golden и сверки с R).
 - `analysis/make_tables.R` — таблицы статьи из `results/report_*.csv`.

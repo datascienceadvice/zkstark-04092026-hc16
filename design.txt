@@ -103,7 +103,7 @@ Guest работает в #![no_std]. Требуются собственные 
 - (нормальный CDF не нужен для MVP)
 
 ## 8. Валидация против R
-- Rscript D:\R\R-4.3.1\bin\Rscript.exe
+- Rscript (R 4.3.1)
 - t.test(x, y, var.equal=FALSE) <-> Welch (t, df, p)
 - mean(x), sd(x) <-> описательная статистика
 - Допуск: |delta-p| < 1e-6 (численные различия реализации t-CDF/бета)

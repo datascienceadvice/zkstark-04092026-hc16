@@ -1,10 +1,16 @@
 #!/bin/bash
-# Синхронизация исходников из Windows-копии (D:\lair\zkstark) в WSL-копию (~/zkstark).
-# Правки пишутся в D:\ (инструменты), сборки идут в ~/zkstark (ext4).
+# Синхронизация исходников из Windows-копии в WSL-копию.
+# Правки пишутся в Windows (инструменты), сборки идут в WSL (ext4).
 # Пропускаем .git, target, results, scripts, todo.
 set -e
-SRC=/mnt/d/lair/zkstark
-DST=/home/test/zkstark
+
+# Задайте переменные окружения SRC и DST перед запуском, например:
+#   export SRC=/mnt/c/path/to/zkstark
+#   export DST=/home/user/zkstark
+# или передайте через окружение при вызове.
+SRC=${SRC:?Ошибка: переменная SRC не задана.}
+DST=${DST:?Ошибка: переменная DST не задана.}
+
 for d in core methods tests bench host; do
   if [ -d "$SRC/$d" ]; then
     mkdir -p "$DST/$d"
